@@ -116,6 +116,7 @@
     <h1>꿈 속의 테라리움</h1>
     <p>클릭 또는 스페이스바를 누르고 있으면 위로!</p>
     <p>토마토를 피하고, 별과 아이템을 모으세요!</p>
+    <p style="color:#ff9999;font-size:13px;">A키를 눌러 고양이로 플레이!</p>
     <button class="btn" id="startBtn">게임 시작</button>
   </div>
 </div>
@@ -254,10 +255,12 @@ function playSound(type) {
       playNote(1319, 0.1, 'sine', 0.1, t + 0.08);
       playNote(1568, 0.15, 'sine', 0.08, t + 0.16);
       break;
-    case 'meat': // 쳡쳡 chewing
-      for (let i = 0; i < 4; i++) {
-        playNoise(0.06, 0.08, t + i * 0.08);
-        playNote(200 + Math.random() * 100, 0.05, 'square', 0.04, t + i * 0.08);
+    case 'meat': // Minecraft-style eating sound
+      for (let i = 0; i < 7; i++) {
+        const offset = i * 0.065 + (Math.random() * 0.015);
+        playNoise(0.04 + Math.random() * 0.03, 0.05 + Math.random() * 0.03, t + offset);
+        playNote(150 + Math.random() * 120, 0.04, 'square', 0.035 + Math.random() * 0.02, t + offset);
+        playNote(80 + Math.random() * 60, 0.03, 'sawtooth', 0.02, t + offset + 0.01);
       }
       break;
     case 'gun': // 장전 loading/cocking
@@ -286,36 +289,54 @@ let catBgmInterval = null;
 function startCatBGM() {
   if (catBgmInterval) return;
   ensureAudio();
-  const melody = [
-    330, 0, 392, 440, 330, 0, 494, 392,
-    330, 370, 0, 440, 494, 392, 330, 0,
-    262, 294, 330, 0, 392, 440, 330, 262,
-    294, 0, 370, 392, 440, 494, 440, 0
-  ];
-  const bass = [
-    110, 0, 110, 0, 82, 0, 82, 0,
-    98, 0, 98, 0, 110, 0, 82, 0,
-    87, 0, 87, 0, 98, 0, 98, 0,
-    82, 0, 82, 0, 110, 0, 110, 0
-  ];
+  let melody, bass, tempo, melVol, bassVol, melWave, bassWave;
+  if (currentStage === 0) {
+    // Stage 1: Upbeat hip-hop
+    melody = [330,0,392,440,330,0,494,392, 330,370,0,440,494,392,330,0, 262,294,330,0,392,440,330,262, 294,0,370,392,440,494,440,0];
+    bass = [110,0,110,0,82,0,82,0, 98,0,98,0,110,0,82,0, 87,0,87,0,98,0,98,0, 82,0,82,0,110,0,110,0];
+    tempo = 110; melVol = 0.045; bassVol = 0.04; melWave = 'triangle'; bassWave = 'sawtooth';
+  } else if (currentStage === 1) {
+    // Stage 2: Slower, minor key, muted
+    melody = [294,0,0,330,262,0,0,247, 262,0,294,0,247,0,0,220, 262,0,0,294,277,0,247,0, 220,0,0,262,247,0,0,0];
+    bass = [73,0,73,0,65,0,65,0, 69,0,69,0,73,0,65,0, 62,0,62,0,69,0,69,0, 65,0,65,0,73,0,73,0];
+    tempo = 140; melVol = 0.035; bassVol = 0.03; melWave = 'sine'; bassWave = 'triangle';
+  } else if (currentStage === 2) {
+    // Stage 3: Melancholy piano-like
+    melody = [262,0,0,0,247,0,0,220, 0,0,262,0,0,294,0,0, 277,0,0,0,262,0,0,0, 247,0,0,0,220,0,0,0];
+    bass = [65,0,0,0,62,0,0,0, 55,0,0,0,58,0,0,0, 52,0,0,0,55,0,0,0, 49,0,0,0,52,0,0,0];
+    tempo = 180; melVol = 0.04; bassVol = 0.025; melWave = 'sine'; bassWave = 'sine';
+  } else {
+    // Stage 4: Very slow, sparse, heavy/sad
+    melody = [196,0,0,0,0,0,185,0, 0,0,0,0,175,0,0,0, 0,0,0,0,165,0,0,0, 0,0,175,0,0,0,0,0];
+    bass = [49,0,0,0,0,0,0,0, 44,0,0,0,0,0,0,0, 41,0,0,0,0,0,0,0, 37,0,0,0,0,0,0,0];
+    tempo = 220; melVol = 0.035; bassVol = 0.03; melWave = 'sine'; bassWave = 'sine';
+  }
   let idx = 0;
   const step = () => {
     if (!audioCtx || gameState !== 'playing' || !swapped) return;
     const freq = melody[idx % melody.length];
     const bf = bass[idx % bass.length];
     if (freq > 0) {
-      playNote(freq, 0.08, 'triangle', 0.045);
-      playNote(freq * 1.5, 0.05, 'sine', 0.02); // hi overtone
+      playNote(freq, currentStage >= 2 ? 0.2 : 0.08, melWave, melVol);
+      if (currentStage < 2) playNote(freq * 1.5, 0.05, 'sine', 0.02);
     }
-    if (bf > 0) playNote(bf, 0.12, 'sawtooth', 0.04);
-    // Kick-snare pattern: kick on 0,4,8,12; snare on 2,6,10,14; hi-hat on odds
-    if (idx % 4 === 0) { playNoise(0.06, 0.09); playNote(55, 0.08, 'sine', 0.06); }
-    if (idx % 4 === 2) playNoise(0.04, 0.06);
-    if (idx % 2 === 1) playNoise(0.02, 0.025);
+    if (bf > 0) playNote(bf, currentStage >= 2 ? 0.25 : 0.12, bassWave, bassVol);
+    // Drums get sparser with each stage
+    if (currentStage === 0) {
+      if (idx % 4 === 0) { playNoise(0.06, 0.09); playNote(55, 0.08, 'sine', 0.06); }
+      if (idx % 4 === 2) playNoise(0.04, 0.06);
+      if (idx % 2 === 1) playNoise(0.02, 0.025);
+    } else if (currentStage === 1) {
+      if (idx % 4 === 0) { playNoise(0.04, 0.07); playNote(50, 0.06, 'sine', 0.04); }
+      if (idx % 8 === 4) playNoise(0.03, 0.04);
+    } else if (currentStage === 2) {
+      if (idx % 8 === 0) playNoise(0.03, 0.05);
+    }
+    // Stage 4: no drums at all
     idx++;
   };
   step();
-  catBgmInterval = setInterval(step, 110);
+  catBgmInterval = setInterval(step, tempo);
 }
 function stopCatBGM() {
   if (catBgmInterval) { clearInterval(catBgmInterval); catBgmInterval = null; }
@@ -398,6 +419,38 @@ let currentStage = 0;
 const stageThresholds = [0, 1500, 3500, 6500];
 let stageTransitionTimer = 0;
 const stageDisplayNames = ['STAGE 1 - SKY', 'STAGE 2 - HELL', 'STAGE 3 - UNDERWATER', 'STAGE 4 - HEAVEN'];
+
+// Speech bubble system
+let speechBubbleText = '';
+let speechBubbleTimer = 0;
+let pendingSpeechBubble = false;
+
+// Hit counter for grade system
+let hitCount = 0;
+
+// Cached room books (prevent flickering)
+let roomBooks = null;
+const dogLines = ['테라시마쨩 가자!', '고기먹자고기!', '마자!!', '뼈다귀커몬!!', '멍멍!', '쉽네!', '냐옹~'];
+const catLines = ['너무 쉽군', '거의 다 왔나', '(썬글라스척)', '리쿠 자네...', '내가 맞아', '신경안써'];
+let dogUsedLines = [];
+let catUsedLines = [];
+
+function triggerSpeechBubble() {
+  const lines = swapped ? catLines : dogLines;
+  const used = swapped ? catUsedLines : dogUsedLines;
+  const available = lines.filter((_, i) => !used.includes(i));
+  if (available.length === 0) return;
+  const pick = Math.floor(Math.random() * available.length);
+  const lineIdx = lines.indexOf(available[pick]);
+  used.push(lineIdx);
+  speechBubbleText = available[pick];
+  speechBubbleTimer = 360; // 6 seconds
+}
+
+// Kitten blink state
+const kitten = {
+  blinkTimer: 0, isBlinking: false, blinkDuration: 8, blinkInterval: 80 + Math.random() * 80
+};
 
 // Ending sequence
 let endingFrame = -1;
@@ -507,13 +560,14 @@ function reset() {
   tomatoes = []; particles = []; hearts = [];
   scoreStars = []; gunPickups = []; meatPickups = []; lifeStars = []; beamParticles = [];
   groundObstacles = [];
-  score = 0; lives = 3; invincibleTimer = 0;
+  score = 0; lives = 3; invincibleTimer = 0; hitCount = 0;
   frameCount = 0; difficulty = 1; isSpaceHeld = false;
   gunActive = false; gunTimer = 0; nightTransition = 0;
   fatScale = 1; tomatoSpawnCount = 0; beamFlashTimer = 0;
   scrollOffset = 0; swapped = false; gameStartFrame = 0;
   gamePaused = false; countdownTimer = 0; pausedBgmState = null; currentStage = 0;
   stageTransitionTimer = 0; endingFrame = -1; endingNarrated = false; endingScrollY = 0;
+  speechBubbleText = ''; speechBubbleTimer = 0; dogUsedLines = []; catUsedLines = []; pendingSpeechBubble = false; roomBooks = null;
   if (endingBgmInterval) { clearInterval(endingBgmInterval); endingBgmInterval = null; }
   scoreText.textContent = 'SCORE: 0';
   updateLivesUI();
@@ -694,6 +748,64 @@ function drawBone(x, y) {
   drawPixelRect(ox + 30, oy, px * 2, px * 2, '#fff');
   drawPixelRect(ox + 30, oy + 7, px * 2, px * 2, '#fff');
   drawPixelRect(ox + 25, oy + 3, px, px * 2, '#fff');
+  ctx.restore();
+}
+
+// ============ DRAW KITTEN (small white cat follower) ============
+function drawKitten(x, y) {
+  const px = 3;
+  const bounce = Math.sin(frameCount * 0.08 + 1) * 3;
+  const ox = Math.floor(x - 12);
+  const by = Math.floor(y - 12) + bounce;
+  ctx.save();
+  // Pulsing glow aura behind kitten
+  const glowSize = 18 + Math.sin(frameCount * 0.06) * 4;
+  const aura = ctx.createRadialGradient(ox + 10, by + 10, 2, ox + 10, by + 10, glowSize);
+  aura.addColorStop(0, 'rgba(200,210,255,0.25)');
+  aura.addColorStop(0.5, 'rgba(180,200,255,0.1)');
+  aura.addColorStop(1, 'rgba(180,200,255,0)');
+  ctx.fillStyle = aura;
+  ctx.fillRect(ox - 15, by - 15, 50, 50);
+  ctx.shadowColor = '#ccddff'; ctx.shadowBlur = 16 + Math.sin(frameCount * 0.08) * 4;
+  // Body
+  for (let i = 0; i < 4; i++) drawPixelRect(ox + 2 + i * px, by + 8, px, px * 2, '#f0f0f5');
+  // Belly
+  for (let i = 0; i < 3; i++) drawPixelRect(ox + 5 + i * px, by + 14, px, px, '#fff');
+  // Head
+  for (let i = 0; i < 3; i++) drawPixelRect(ox + 8 + i * px, by + 2, px, px * 3, '#f0f0f5');
+  // Ears
+  drawPixelRect(ox + 8, by - 1, px, px, '#f0f0f5');
+  drawPixelRect(ox + 9, by - 3, 2, 2, '#ffcccc');
+  drawPixelRect(ox + 14, by - 1, px, px, '#f0f0f5');
+  drawPixelRect(ox + 15, by - 3, 2, 2, '#ffcccc');
+  // Eyes
+  kitten.blinkTimer++;
+  if (!kitten.isBlinking && kitten.blinkTimer >= kitten.blinkInterval) { kitten.isBlinking = true; kitten.blinkTimer = 0; }
+  if (kitten.isBlinking && kitten.blinkTimer >= kitten.blinkDuration) { kitten.isBlinking = false; kitten.blinkTimer = 0; kitten.blinkInterval = 80 + Math.random() * 80; }
+  if (kitten.isBlinking) {
+    drawPixelRect(ox + 12, by + 5, 3, 1, '#333');
+    drawPixelRect(ox + 17, by + 5, 3, 1, '#333');
+  } else {
+    drawPixelRect(ox + 12, by + 4, 2, 2, '#333');
+    drawPixelRect(ox + 17, by + 4, 2, 2, '#333');
+    drawPixelRect(ox + 13, by + 4, 1, 1, '#fff');
+    drawPixelRect(ox + 18, by + 4, 1, 1, '#fff');
+  }
+  // Nose
+  drawPixelRect(ox + 15, by + 7, 2, 1, '#ffaaaa');
+  // Tail
+  const tailW = Math.sin(frameCount * 0.12) * 3;
+  drawPixelRect(ox - 1, by + 10 + tailW, px, px, '#e8e8f0');
+  drawPixelRect(ox - 3, by + 7 + tailW * 1.3, px, px, '#e0e0ea');
+  // Legs
+  const legA = Math.sin(frameCount * 0.2) * 2;
+  drawPixelRect(ox + 5, by + 17 + legA, px, px, '#f0f0f5');
+  drawPixelRect(ox + 11, by + 17 - legA, px, px, '#f0f0f5');
+  // Wings (tiny)
+  const wingF = Math.sin(frameCount * 0.25) * 3;
+  ctx.fillStyle = 'rgba(220,220,255,0.5)';
+  ctx.fillRect(ox + 4, by + 3 + wingF, px, px);
+  ctx.fillRect(ox + 1, by + 0 + wingF * 1.3, px, px);
   ctx.restore();
 }
 
@@ -947,9 +1059,12 @@ function drawBackground() {
     return;
   }
 
-  // Cat mode city night (overrides stage BG when cat is leader, not gun mode)
+  // Cat mode backgrounds (overrides stage BG when cat is leader, not gun mode)
   if (swapped && !gunActive && gameState === 'playing') {
-    drawCityNightBackground();
+    if (currentStage === 0) drawCityNightBackground();
+    else if (currentStage === 1) drawCatAlleyBackground();
+    else if (currentStage === 2) drawCatSchoolBackground();
+    else drawCatRoomBackground();
     return;
   }
 
@@ -1125,6 +1240,182 @@ function drawCityNightBackground() {
   });
 }
 
+// Cat Stage 2: Dark alley
+function drawCatAlleyBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0a15'); grad.addColorStop(0.5, '#151520'); grad.addColorStop(1, '#1a1a25');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  // Brick walls on sides
+  for (let side = 0; side < 2; side++) {
+    const wx = side === 0 ? 0 : W - 80;
+    ctx.fillStyle = '#2a1a15';
+    ctx.fillRect(wx, 0, 80, H);
+    // Brick pattern
+    for (let row = 0; row < H; row += 12) {
+      for (let col = 0; col < 80; col += 20) {
+        const offset = (row / 12) % 2 === 0 ? 0 : 10;
+        ctx.fillStyle = row % 24 < 12 ? '#3a2520' : '#2a1a18';
+        ctx.fillRect(wx + col + offset, row, 18, 10);
+        ctx.fillStyle = '#1a1010';
+        ctx.fillRect(wx + col + offset, row + 10, 18, 2);
+      }
+    }
+  }
+  // Dim street light
+  const lampX = 200 + Math.sin(frameCount * 0.005) * 5;
+  ctx.fillStyle = '#444'; ctx.fillRect(lampX, 30, 4, 120);
+  ctx.fillStyle = '#555'; ctx.fillRect(lampX - 8, 25, 20, 8);
+  // Light glow
+  const glowR = 80 + Math.sin(frameCount * 0.03) * 10;
+  const lgrd = ctx.createRadialGradient(lampX + 2, 40, 5, lampX + 2, 40, glowR);
+  lgrd.addColorStop(0, 'rgba(255,200,100,0.15)'); lgrd.addColorStop(1, 'rgba(255,200,100,0)');
+  ctx.fillStyle = lgrd; ctx.fillRect(lampX - glowR, 40 - glowR, glowR * 2, glowR * 2);
+  // Puddles on ground
+  ctx.fillStyle = 'rgba(100,120,150,0.2)';
+  ctx.fillRect(300, H - 15, 60, 8); ctx.fillRect(500, H - 12, 45, 6);
+  // Trash can
+  ctx.fillStyle = '#333'; ctx.fillRect(120, H - 40, 25, 40);
+  ctx.fillStyle = '#3a3a3a'; ctx.fillRect(117, H - 45, 31, 8);
+  // Ground
+  ctx.fillStyle = '#1a1a20'; ctx.fillRect(80, H - 5, W - 160, 5);
+}
+
+// Cat Stage 3: Empty school at sunset
+function drawCatSchoolBackground() {
+  // Orange sunset gradient (wall color)
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#cc7744'); grad.addColorStop(0.4, '#bb6633'); grad.addColorStop(0.7, '#995522'); grad.addColorStop(1, '#442222');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  // Back wall panel line
+  ctx.fillStyle = '#8a5a3a'; ctx.fillRect(0, 200, W, 3);
+  // Chalkboard (center of wall)
+  ctx.fillStyle = '#2a3a2a'; ctx.fillRect(280, 40, 240, 150);
+  ctx.fillStyle = '#1a2a1a'; ctx.fillRect(290, 50, 220, 130);
+  // Chalkboard frame
+  ctx.fillStyle = '#6a5030'; ctx.fillRect(280, 40, 240, 5); ctx.fillRect(280, 185, 240, 5);
+  ctx.fillRect(280, 40, 5, 150); ctx.fillRect(515, 40, 5, 150);
+  // Chalk tray
+  ctx.fillStyle = '#5a4028'; ctx.fillRect(290, 185, 220, 8);
+  // Chalk marks on board
+  ctx.fillStyle = 'rgba(200,200,180,0.3)';
+  ctx.fillRect(310, 70, 60, 2); ctx.fillRect(310, 85, 80, 2); ctx.fillRect(310, 100, 50, 2);
+  ctx.fillRect(420, 120, 70, 2); ctx.fillRect(420, 135, 40, 2);
+  // Windows (left side, 2 tall windows)
+  for (let i = 0; i < 2; i++) {
+    const wx = 20 + i * 110;
+    ctx.fillStyle = '#5a4a3a'; ctx.fillRect(wx, 40, 80, 165);
+    const wgrad = ctx.createLinearGradient(0, 40, 0, 200);
+    wgrad.addColorStop(0, 'rgba(255,160,60,0.7)'); wgrad.addColorStop(1, 'rgba(255,80,30,0.3)');
+    ctx.fillStyle = wgrad; ctx.fillRect(wx + 5, 45, 70, 155);
+    ctx.fillStyle = '#5a4a3a';
+    ctx.fillRect(wx + 37, 45, 6, 155); // vertical divider
+    ctx.fillRect(wx + 5, 115, 70, 5); // horizontal divider
+  }
+  // Clock above chalkboard
+  ctx.fillStyle = '#ddd'; ctx.beginPath(); ctx.arc(400, 25, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(400, 25, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(400, 25, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(400, 25); ctx.lineTo(400, 18); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(400, 25); ctx.lineTo(406, 25); ctx.stroke();
+  // Teacher's desk (right side)
+  ctx.fillStyle = '#5a4530'; ctx.fillRect(600, 250, 120, 8);
+  ctx.fillStyle = '#4a3520'; ctx.fillRect(610, 258, 8, 50); ctx.fillRect(700, 258, 8, 50);
+  // Book on teacher desk
+  ctx.fillStyle = '#884444'; ctx.fillRect(630, 240, 30, 10);
+  ctx.fillStyle = '#448844'; ctx.fillRect(665, 238, 25, 12);
+  // Student desks (3 columns, 2 rows with proper perspective)
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      const dx = 250 + col * 130, dy = H - 60 - row * 90;
+      // Desk surface
+      ctx.fillStyle = '#6a5a40'; ctx.fillRect(dx, dy, 70, 5);
+      // Desk legs
+      ctx.fillStyle = '#555'; ctx.fillRect(dx + 3, dy + 5, 3, 25); ctx.fillRect(dx + 64, dy + 5, 3, 25);
+      // Textbook on desk
+      if ((row + col) % 2 === 0) {
+        ctx.fillStyle = '#4466aa'; ctx.fillRect(dx + 15, dy - 6, 20, 6);
+      }
+      // Chair (behind desk)
+      ctx.fillStyle = '#5a4a38'; ctx.fillRect(dx + 75, dy + 8, 25, 3);
+      ctx.fillRect(dx + 78, dy + 11, 3, 18); ctx.fillRect(dx + 95, dy + 11, 3, 18);
+      ctx.fillRect(dx + 75, dy - 12, 3, 23); // backrest
+    }
+  }
+  // Floor
+  ctx.fillStyle = '#3a3025'; ctx.fillRect(0, H - 25, W, 25);
+  for (let i = 0; i < W; i += 50) {
+    ctx.fillStyle = '#332a20'; ctx.fillRect(i, H - 25, 1, 25);
+  }
+  // Sunset light rays through windows
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = '#ffaa44';
+  ctx.beginPath(); ctx.moveTo(60, 45); ctx.lineTo(200, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(170, 45); ctx.lineTo(310, H); ctx.lineTo(110, H); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+  // Dust particles in light
+  ctx.fillStyle = 'rgba(255,200,150,0.4)';
+  for (let i = 0; i < 20; i++) {
+    const px = (i * 53 + frameCount * 0.15) % W;
+    const py = (i * 37 + Math.sin(frameCount * 0.01 + i) * 20) % H;
+    ctx.fillRect(px, py, 2, 2);
+  }
+}
+
+// Cat Stage 4: Student's room with books and desk lamp
+function drawCatRoomBackground() {
+  // Dark room gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0e0e18'); grad.addColorStop(0.5, '#121220'); grad.addColorStop(1, '#1a1a28');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  // Bookshelf (left side)
+  ctx.fillStyle = '#3a2a1a'; ctx.fillRect(0, 50, 120, H - 50);
+  // Generate books once and cache
+  if (!roomBooks) {
+    roomBooks = [];
+    for (let sy = 80; sy < H - 30; sy += 80) {
+      let bx = 5;
+      while (bx < 115) {
+        const bh = 30 + (bx * 7) % 25;
+        const colors = ['#883333', '#336688', '#338833', '#885533', '#553388', '#884444'];
+        roomBooks.push({ x: bx, sy: sy, h: bh, color: colors[(bx * 3) % colors.length] });
+        bx += 12 + Math.floor((bx * 13 + sy) % 5);
+      }
+    }
+  }
+  // Shelf boards and cached books
+  for (let sy = 80; sy < H - 30; sy += 80) {
+    ctx.fillStyle = '#4a3a28'; ctx.fillRect(0, sy, 120, 6);
+  }
+  roomBooks.forEach(b => { ctx.fillStyle = b.color; ctx.fillRect(b.x, b.sy - b.h, 10, b.h); });
+  // Desk (right side)
+  ctx.fillStyle = '#4a3a25'; ctx.fillRect(500, H - 100, 280, 8);
+  ctx.fillStyle = '#3a2a18'; ctx.fillRect(510, H - 92, 8, 92); ctx.fillRect(760, H - 92, 8, 92);
+  // Books on desk
+  ctx.fillStyle = '#336688'; ctx.fillRect(600, H - 120, 40, 20);
+  ctx.fillStyle = '#885533'; ctx.fillRect(605, H - 135, 35, 15);
+  ctx.fillStyle = '#553388'; ctx.fillRect(650, H - 115, 30, 15);
+  // Desk lamp
+  ctx.fillStyle = '#555'; ctx.fillRect(720, H - 140, 5, 40); // pole
+  ctx.fillStyle = '#666'; ctx.fillRect(705, H - 148, 30, 10); // shade
+  // Warm lamp glow
+  const lampGlow = ctx.createRadialGradient(720, H - 130, 10, 720, H - 100, 150);
+  lampGlow.addColorStop(0, 'rgba(255,220,150,0.2)'); lampGlow.addColorStop(0.5, 'rgba(255,200,100,0.08)');
+  lampGlow.addColorStop(1, 'rgba(255,200,100,0)');
+  ctx.fillStyle = lampGlow; ctx.fillRect(550, H - 280, 250, 280);
+  // Small warm dot at lamp
+  ctx.fillStyle = 'rgba(255,230,150,0.8)'; ctx.fillRect(718, H - 145, 8, 5);
+  // Floor
+  ctx.fillStyle = '#1e1e28'; ctx.fillRect(0, H - 8, W, 8);
+  // Window (small, moonlit)
+  ctx.fillStyle = '#1a2040'; ctx.fillRect(300, 60, 80, 100);
+  ctx.fillStyle = '#2a3060'; ctx.fillRect(305, 65, 70, 90);
+  // Moon through window
+  ctx.fillStyle = 'rgba(200,210,255,0.3)'; ctx.fillRect(330, 80, 15, 15);
+  // Curtain
+  ctx.fillStyle = '#2a2035'; ctx.fillRect(295, 55, 15, 115); ctx.fillRect(375, 55, 15, 115);
+}
+
 function drawForeground() {
   clouds.filter(c => c.layer === 1).forEach(drawCloud);
 }
@@ -1228,7 +1519,8 @@ function drawHeart(x, y, scale) {
 
 function spawnTomato() {
   tomatoSpawnCount++;
-  const speed = 1.5 + difficulty * 0.5; // starts slow, gets faster every 20s
+  const stageSpd = [0.8, 0.9, 1.0, 1.1][currentStage] || 0.8;
+  const speed = (1.5 + difficulty * 0.5) * stageSpd; // slower start, scales per stage
   const y = 50 + Math.random() * (H - 100);
   tomatoes.push({
     x: W + 30, y, vx: -(speed + Math.random()),
@@ -1296,20 +1588,20 @@ function update() {
 
     // Stage transition timer countdown
     if (stageTransitionTimer > 0) stageTransitionTimer--;
+    if (speechBubbleTimer > 0) speechBubbleTimer--;
+    // Trigger speech bubble after stage transition ends
+    if (pendingSpeechBubble && stageTransitionTimer <= 0) { triggerSpeechBubble(); pendingSpeechBubble = false; }
 
     // Stage changed
     if (currentStage !== prevStage) {
       stageTransitionTimer = 150; // ~2.5 sec transition screen
-      // Reset to dog on stage change
-      if (swapped) {
-        const leader = cat;
-        dog.x = leader.x; dog.y = leader.y; dog.vy = leader.vy;
-        swapped = false;
-        stopCatBGM();
-        addParticles(dog.x, dog.y, '#ffe066', 8);
+      // Restart BGM for new stage (keep current character)
+      if (!gunActive) {
+        if (swapped) { stopCatBGM(); startCatBGM(); }
+        else { stopBGM(); startBGM(); }
       }
-      // Restart BGM for new stage
-      if (!gunActive) { stopBGM(); startBGM(); }
+      // Speech bubble after stage transition ends
+      pendingSpeechBubble = true;
     }
 
     // All stages cleared: trigger ending after playing through stage 4 (score >= 10000)
@@ -1400,7 +1692,8 @@ function update() {
     bone.x = W - 100 + Math.sin(bone.bobOffset * 0.7) * 40;
 
     // Spawn tomatoes (slower at start, faster over time)
-    const baseRate = gunActive ? 20 : Math.max(30, 80 - difficulty * 8);
+    const stageRateBonus = [20, 10, 5, 0][currentStage] || 0;
+    const baseRate = gunActive ? 20 : Math.max(30, 100 + stageRateBonus - difficulty * 8);
     if (frameCount % Math.floor(baseRate) === 0 && stageTransitionTimer <= 0) spawnTomato();
 
     // Spawn ground obstacles periodically
@@ -1412,7 +1705,8 @@ function update() {
     }
 
     // Update tomatoes
-    const speedMul = gunActive ? 1.8 : 1;
+    const stageSpeed = [0.8, 0.9, 1.0, 1.1][currentStage] || 0.8;
+    const speedMul = gunActive ? 1.8 : stageSpeed;
     tomatoes.forEach(t => {
       t.x += t.vx * speedMul;
       t.y += t.vy;
@@ -1428,6 +1722,7 @@ function update() {
         const pR = 22 * fatScale;
         if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, t.x - tSize, t.y - tSize, tSize * 2, tSize * 2)) {
           lives--;
+          hitCount++;
           updateLivesUI();
           addParticles(leader.x, leader.y, '#ff5252', 15);
           playSound('tomato');
@@ -1561,6 +1856,7 @@ function update() {
         const pR = 22 * fatScale;
         if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, o.x, obstTop, o.w, o.h)) {
           lives--;
+          hitCount++;
           updateLivesUI();
           addParticles(leader.x, leader.y, '#888', 12);
           playSound('tomato');
@@ -1629,8 +1925,9 @@ function draw() {
     // Life stars
     lifeStars.forEach(ls => drawLifeStar(ls.x, ls.y));
 
-    // Bone
-    drawBone(bone.x, bone.y);
+    // Bone or Kitten
+    if (swapped) drawKitten(bone.x, bone.y, Math.floor(frameCount / 10) % 2, kitten.isBlinking);
+    else drawBone(bone.x, bone.y);
 
     // Ground obstacles (behind characters)
     groundObstacles.forEach(o => drawGroundObstacle(o));
@@ -1830,6 +2127,60 @@ function drawStageTransition() {
   ctx.globalAlpha = 1;
 }
 
+function drawSpeechBubble() {
+  if (speechBubbleTimer <= 0 || !speechBubbleText) return;
+  const leader = swapped ? cat : dog;
+  const alpha = Math.min(1, speechBubbleTimer / 40); // fade out in last 40 frames
+  ctx.globalAlpha = alpha;
+  ctx.font = 'bold 13px Courier New';
+  const textW = ctx.measureText(speechBubbleText).width;
+  const bw = textW + 16;
+  const bh = 26;
+  const bx = leader.x + 15 - bw / 2;
+  const by = leader.y - 40;
+  // Bubble body
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 6);
+  ctx.fill();
+  ctx.stroke();
+  // Tail (triangle pointing down)
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(leader.x + 10, by + bh);
+  ctx.lineTo(leader.x + 20, by + bh);
+  ctx.lineTo(leader.x + 15, by + bh + 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#333';
+  ctx.beginPath();
+  ctx.moveTo(leader.x + 10, by + bh);
+  ctx.lineTo(leader.x + 15, by + bh + 8);
+  ctx.lineTo(leader.x + 20, by + bh);
+  ctx.stroke();
+  // Cover tail top line with white
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(leader.x + 11, by + bh - 1, 8, 3);
+  // Text
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(speechBubbleText, bx + bw / 2, by + bh / 2);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.globalAlpha = 1;
+}
+
+function getGrade(hits) {
+  if (hits === 0) return { grade: 'SS', color: '#ffd700' };
+  if (hits === 1) return { grade: 'S', color: '#c0c0ff' };
+  if (hits <= 3) return { grade: 'A', color: '#66ff66' };
+  if (hits <= 5) return { grade: 'B', color: '#66ccff' };
+  return { grade: 'C', color: '#aaaaaa' };
+}
+
 // ============ ENDING SEQUENCE ============
 function startEnding() {
   gameState = 'ending';
@@ -2016,8 +2367,9 @@ function drawEnding() {
     }
   }
 
-  // Bone
-  drawBone(bone.x, bone.y);
+  // Bone or Kitten
+  if (swapped) drawKitten(bone.x, bone.y, Math.floor(frameCount / 10) % 2, kitten.isBlinking);
+  else drawBone(bone.x, bone.y);
 
   // Characters
   drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
@@ -2055,8 +2407,22 @@ function drawEnding() {
 
     ctx.font = '18px Courier New';
     ctx.fillStyle = '#fff';
-    ctx.fillText(`FINAL SCORE: ${score}`, W / 2, H / 2 + 80);
-    ctx.fillText('You cleared all stages!', W / 2, H / 2 + 105);
+    ctx.fillText(`FINAL SCORE: ${score}`, W / 2, H / 2 - 40);
+
+    // Grade display
+    const grade = getGrade(hitCount);
+    ctx.save();
+    ctx.shadowColor = grade.color; ctx.shadowBlur = 20;
+    ctx.font = 'bold 60px Courier New';
+    ctx.fillStyle = grade.color;
+    ctx.fillText(grade.grade, W / 2, H / 2 + 35);
+    ctx.restore();
+    ctx.font = '14px Courier New';
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`피격 횟수: ${hitCount}`, W / 2, H / 2 + 70);
+    ctx.font = '16px Courier New';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('You cleared all stages!', W / 2, H / 2 + 100);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = 1;
@@ -2099,6 +2465,8 @@ function gameLoop() {
     draw();
     // Stage indicator
     drawStageIndicator();
+    // Speech bubble
+    if (speechBubbleTimer > 0 && gameState === 'playing') drawSpeechBubble();
     // Stage transition overlay
     if (stageTransitionTimer > 0 && gameState === 'playing') drawStageTransition();
     // Pause/countdown overlays
