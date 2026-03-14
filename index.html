@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>꿈 속의 테라리움</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  #gameContainer { position: relative; image-rendering: pixelated; }
+  canvas {
+    display: block; image-rendering: pixelated;
+    border: 4px solid #fff; border-radius: 8px;
+    box-shadow: 0 0 30px rgba(255,255,200,0.3);
+  }
+  #ui {
+    position: absolute; top: 10px; left: 14px; right: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    pointer-events: none; z-index: 10;
+  }
+  #ui span {
+    color: #fff; font-size: 20px;
+    text-shadow: 2px 2px 0 #000, -1px -1px 0 #000; letter-spacing: 1px;
+  }
+  #livesContainer { display: flex; gap: 4px; align-items: center; }
+  #overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    background: rgba(0,0,0,0.55); z-index: 20; border-radius: 6px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { color: #ffe066; font-size: 34px; text-shadow: 3px 3px 0 #000; margin-bottom: 8px; }
+  #overlay h2 { color: #ff6b6b; font-size: 28px; text-shadow: 2px 2px 0 #000; margin-bottom: 16px; }
+  #overlay p  { color: #fff; font-size: 15px; text-shadow: 1px 1px 0 #000; margin-bottom: 6px; }
+  #overlay .score-display { color: #ffe066; font-size: 22px; text-shadow: 2px 2px 0 #000; margin: 8px 0; }
+  #overlay .btn {
+    margin-top: 14px; padding: 10px 30px; font-size: 18px;
+    font-family: 'Courier New', monospace; background: #ffe066;
+    border: 3px solid #000; border-radius: 6px; cursor: pointer;
+    pointer-events: all; box-shadow: 3px 3px 0 #000; transition: transform 0.1s;
+  }
+  #overlay .btn:hover { transform: scale(1.05); }
+  #overlay .btn:active { transform: scale(0.95); box-shadow: 1px 1px 0 #000; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="game" width="800" height="500"></canvas>
+  <div id="ui">
+    <span id="scoreText">SCORE: 0</span>
+    <div id="livesContainer"></div>
+    <span id="bestText">BEST: 0</span>
+  </div>
+  <div id="overlay">
+    <h1>꿈 속의 테라리움</h1>
+    <p>클릭 또는 스페이스바를 누르고 있으면 위로!</p>
+    <p>토마토를 피하고, 별과 아이템을 모으세요!</p>
+    <button class="btn" id="startBtn">게임 시작</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const scoreText = document.getElementById('scoreText');
+const bestText = document.getElementById('bestText');
+const livesContainer = document.getElementById('livesContainer');
+
+const W = 800, H = 500;
+
+// ============ WEB AUDIO API SOUND SYSTEM ============
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+let bgmInterval = null;
+let gunBgmInterval = null;
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playNote(freq, duration, type, vol, startTime) {
+  const t = startTime || audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type || 'square';
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(vol || 0.08, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + duration);
+}
+
+function playNoise(duration, vol, startTime) {
+  const t = startTime || audioCtx.currentTime;
+  const bufSize = audioCtx.sampleRate * duration;
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(vol || 0.05, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+  src.connect(gain);
+  gain.connect(audioCtx.destination);
+  src.start(t);
+  src.stop(t + duration);
+}
+
+// BGM: Flash-game style looping melody
+function startBGM() {
+  if (bgmInterval) return;
+  ensureAudio();
+  const melody = [
+    523, 587, 659, 523, 659, 698, 659, 0,
+    523, 587, 659, 784, 698, 659, 587, 0,
+    659, 698, 784, 659, 784, 880, 784, 0,
+    698, 659, 587, 523, 587, 659, 523, 0
+  ];
+  let idx = 0;
+  const step = () => {
+    if (!audioCtx || gameState !== 'playing') return;
+    const freq = melody[idx % melody.length];
+    if (freq > 0) {
+      playNote(freq, 0.12, 'square', 0.04);
+      // Harmony
+      playNote(freq * 0.5, 0.12, 'triangle', 0.025);
+    }
+    idx++;
+  };
+  step();
+  bgmInterval = setInterval(step, 160);
+}
+
+function stopBGM() {
+  if (bgmInterval) { clearInterval(bgmInterval); bgmInterval = null; }
+}
+
+// Gun BGM: dramatic fast-paced melody
+function startGunBGM() {
+  if (gunBgmInterval) return;
+  ensureAudio();
+  const melody = [
+    880, 988, 1047, 880, 1175, 1047, 988, 880,
+    784, 880, 988, 1047, 1175, 1319, 1175, 1047,
+    1047, 988, 880, 784, 880, 988, 1047, 1175
+  ];
+  let idx = 0;
+  const step = () => {
+    if (!audioCtx || !gunActive) { stopGunBGM(); return; }
+    const freq = melody[idx % melody.length];
+    playNote(freq, 0.08, 'sawtooth', 0.035);
+    playNote(freq * 0.5, 0.08, 'square', 0.02);
+    idx++;
+  };
+  step();
+  gunBgmInterval = setInterval(step, 100);
+}
+
+function stopGunBGM() {
+  if (gunBgmInterval) { clearInterval(gunBgmInterval); gunBgmInterval = null; }
+}
+
+function playSound(type) {
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  switch (type) {
+    case 'tomato': // 철푸덕 splat
+      playNoise(0.15, 0.12, t);
+      playNote(120, 0.12, 'sine', 0.08, t);
+      playNote(80, 0.1, 'sine', 0.06, t + 0.05);
+      break;
+    case 'star': // 띠롱 chime
+      playNote(1047, 0.1, 'sine', 0.1, t);
+      playNote(1319, 0.1, 'sine', 0.1, t + 0.08);
+      playNote(1568, 0.15, 'sine', 0.08, t + 0.16);
+      break;
+    case 'meat': // 쳡쳡 chewing
+      for (let i = 0; i < 4; i++) {
+        playNoise(0.06, 0.08, t + i * 0.08);
+        playNote(200 + Math.random() * 100, 0.05, 'square', 0.04, t + i * 0.08);
+      }
+      break;
+    case 'gun': // 장전 loading/cocking
+      playNoise(0.08, 0.15, t);
+      playNote(180, 0.05, 'sawtooth', 0.1, t);
+      playNote(300, 0.08, 'sawtooth', 0.08, t + 0.1);
+      playNoise(0.06, 0.1, t + 0.15);
+      playNote(600, 0.15, 'square', 0.06, t + 0.2);
+      break;
+    case 'life': // 홀리한 angelic
+      playNote(784, 0.3, 'sine', 0.08, t);
+      playNote(988, 0.3, 'sine', 0.07, t + 0.1);
+      playNote(1175, 0.3, 'sine', 0.06, t + 0.2);
+      playNote(1568, 0.5, 'sine', 0.07, t + 0.3);
+      playNote(784 * 0.5, 0.6, 'triangle', 0.04, t);
+      break;
+    case 'bone': // short pickup
+      playNote(880, 0.08, 'square', 0.06, t);
+      playNote(1175, 0.1, 'square', 0.05, t + 0.06);
+      break;
+  }
+}
+
+// Swapped state tracking
+let swapped = false;
+
+let gameState = 'menu';
+let score = 0;
+let bestScore = 0;
+let frameCount = 0;
+let difficulty = 1;
+let lives = 3;
+let invincibleTimer = 0;
+let isSpaceHeld = false;
+
+// Gun powerup
+let gunActive = false;
+let gunTimer = 0;
+const GUN_DURATION = 300; // 5 seconds at 60fps
+let beamFlashTimer = 0;
+let nightTransition = 0; // 0=day, 1=night
+
+// Meat / fatten
+let fatScale = 1; // 1 = normal, up to ~1.6 when fattened
+
+// Tomato counter for gun/meat spawn rate
+let tomatoSpawnCount = 0;
+
+// Dog
+const dog = {
+  x: 140, y: H / 2, vy: 0,
+  floatPower: -0.35, gravity: 0.12,
+  maxFallSpeed: 2.5, maxRiseSpeed: -3,
+  animFrame: 0, animTimer: 0,
+  blinkTimer: 0, isBlinking: false,
+  blinkDuration: 8, blinkInterval: 120 + Math.random() * 120
+};
+
+// Cat
+const cat = {
+  x: 70, y: H / 2,
+  animFrame: 0, animTimer: 0,
+  blinkTimer: 0, isBlinking: false,
+  blinkDuration: 8, blinkInterval: 100 + Math.random() * 100
+};
+
+// Bone (still present but now just decorative guide)
+const bone = { x: W - 100, y: H / 2, bobOffset: 0 };
+
+let tomatoes = [];
+let clouds = [];
+let particles = [];
+let hearts = [];
+let scoreStars = [];  // stationary collectible stars (+5)
+let gunPickups = [];  // gun items flying in
+let meatPickups = []; // meat items flying in
+let lifeStars = [];   // big life-restoring stars
+let beamParticles = [];
+
+// Track screen scroll offset for stationary stars
+let scrollOffset = 0;
+
+// Night sky stars (for gun powerup)
+let nightStars = [];
+function initNightStars() {
+  nightStars = [];
+  for (let i = 0; i < 60; i++) {
+    nightStars.push({
+      x: Math.random() * W, y: Math.random() * H,
+      size: 1 + Math.random() * 2,
+      twinkleSpeed: 0.02 + Math.random() * 0.04,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+function initClouds() {
+  clouds = [];
+  for (let i = 0; i < 10; i++) {
+    clouds.push({
+      x: Math.random() * W, y: Math.random() * H,
+      w: 50 + Math.random() * 80, h: 25 + Math.random() * 25,
+      speed: 0.3 + Math.random() * 0.5,
+      layer: Math.random() > 0.5 ? 0 : 1
+    });
+  }
+}
+
+function spawnScoreStars() {
+  // Spawn stationary stars placed ahead in the world (absolute world positions)
+  for (let i = 0; i < 5; i++) {
+    scoreStars.push({
+      wx: scrollOffset + W * 0.3 + Math.random() * W * 1.5, // world x
+      y: 50 + Math.random() * (H - 100),
+      collected: false
+    });
+  }
+}
+
+function updateLivesUI() {
+  livesContainer.innerHTML = '';
+  for (let i = 0; i < lives; i++) {
+    const c = document.createElement('canvas');
+    c.width = 40; c.height = 40;
+    c.style.imageRendering = 'pixelated';
+    c.style.width = '40px'; c.style.height = '40px';
+    const s = c.getContext('2d');
+    // Big pixel star
+    const p = 5;
+    s.fillStyle = '#ffe066';
+    s.fillRect(15, 0, p * 2, p);
+    s.fillRect(0, 10, 40, p);
+    s.fillRect(5, 5, p * 2, p);
+    s.fillRect(25, 5, p * 2, p);
+    s.fillRect(5, 20, p * 2, p);
+    s.fillRect(25, 20, p * 2, p);
+    s.fillRect(10, 25, p, p);
+    s.fillRect(25, 25, p, p);
+    s.fillRect(15, 30, p * 2, p);
+    s.fillStyle = '#fff5aa';
+    s.fillRect(17, 11, 6, 3);
+    livesContainer.appendChild(c);
+  }
+}
+
+function reset() {
+  dog.x = 140; dog.y = H / 2; dog.vy = 0;
+  dog.animFrame = 0; dog.blinkTimer = 0; dog.isBlinking = false;
+  cat.x = 70; cat.y = H / 2;
+  cat.blinkTimer = 0; cat.isBlinking = false;
+  bone.x = W - 100; bone.y = H / 2; bone.bobOffset = 0;
+  tomatoes = []; particles = []; hearts = [];
+  scoreStars = []; gunPickups = []; meatPickups = []; lifeStars = []; beamParticles = [];
+  score = 0; lives = 3; invincibleTimer = 0;
+  frameCount = 0; difficulty = 1; isSpaceHeld = false;
+  gunActive = false; gunTimer = 0; nightTransition = 0;
+  fatScale = 1; tomatoSpawnCount = 0; beamFlashTimer = 0;
+  scrollOffset = 0;
+  scoreText.textContent = 'SCORE: 0';
+  updateLivesUI();
+  spawnScoreStars();
+}
+
+function drawPixelRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
+}
+
+// ============ DRAW DOG (with fatScale support) ============
+function drawDog(x, y, frame, blinking) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(fatScale, fatScale);
+  ctx.translate(-x, -y);
+
+  const px = 5;
+  const ox = Math.floor(x - 30);
+  const oy = Math.floor(y - 27);
+  const bounce = Math.sin(frame * 0.3) * 2;
+  const by = oy + bounce;
+
+  if (invincibleTimer > 0 && Math.floor(invincibleTimer / 4) % 2 === 0) {
+    ctx.globalAlpha = 0.4;
+  }
+
+  // Tail
+  const tailWag = Math.sin(frameCount * 0.2) * 3;
+  drawPixelRect(ox - 3, by + 18 + tailWag, px, px, '#e8a033');
+  drawPixelRect(ox - 8, by + 13 + tailWag, px, px, '#e8a033');
+  drawPixelRect(ox - 13, by + 8 + tailWag * 1.3, px, px, '#c87820');
+
+  // Back legs
+  const legAnim = Math.sin(frameCount * 0.25) * 4;
+  drawPixelRect(ox + 10, by + 36 + legAnim, px, px * 2, '#e8a033');
+  drawPixelRect(ox + 10, by + 46 + legAnim, px, px, '#fff');
+
+  // Body
+  for (let i = 0; i < 6; i++) drawPixelRect(ox + 5 + i * px, by + 18, px, px * 4, '#f0b040');
+  for (let i = 0; i < 5; i++) drawPixelRect(ox + 10 + i * px, by + 28, px, px * 2, '#fff');
+  drawPixelRect(ox + 5, by + 18, px, px * 2, '#c87820');
+  drawPixelRect(ox + 10, by + 18, px, px, '#c87820');
+
+  // Front legs
+  const flegAnim = Math.sin(frameCount * 0.25 + Math.PI) * 4;
+  drawPixelRect(ox + 30, by + 36 + flegAnim, px, px * 2, '#f0b040');
+  drawPixelRect(ox + 30, by + 46 + flegAnim, px, px, '#fff');
+
+  // Head
+  for (let i = 0; i < 5; i++) drawPixelRect(ox + 22 + i * px, by + 3, px, px * 4, '#f0b040');
+  drawPixelRect(ox + 27, by + 13, px * 2, px * 2, '#fff');
+
+  // Ears
+  drawPixelRect(ox + 22, by - 2, px * 2, px, '#8B4513');
+  drawPixelRect(ox + 22, by - 7, px, px, '#8B4513');
+  drawPixelRect(ox + 37, by - 2, px * 2, px, '#c87820');
+  drawPixelRect(ox + 42, by - 7, px, px, '#c87820');
+
+  // Headband
+  drawPixelRect(ox + 22, by + 3, px * 5, px, '#2d8a4e');
+  drawPixelRect(ox + 32, by + 1, px, px + 2, '#ffe066');
+  drawPixelRect(ox + 30, by + 3, px, 2, '#ffe066');
+  drawPixelRect(ox + 37, by + 3, px, 2, '#ffe066');
+
+  // Eye
+  if (blinking) {
+    drawPixelRect(ox + 35, by + 10, px + 1, 2, '#000');
+  } else {
+    drawPixelRect(ox + 35, by + 8, px, px, '#000');
+    drawPixelRect(ox + 37, by + 8, 2, 2, '#fff');
+  }
+
+  // Nose
+  drawPixelRect(ox + 44, by + 13, px, px, '#333');
+
+  // Mouth
+  if (gunActive) {
+    // Open mouth for beam
+    drawPixelRect(ox + 44, by + 17, px + 2, px, '#c87820');
+    drawPixelRect(ox + 44, by + 18, px + 4, 3, '#ff0');
+  } else {
+    drawPixelRect(ox + 40, by + 19, px, 2, '#c87820');
+    drawPixelRect(ox + 38, by + 17, 2, 2, '#c87820');
+    drawPixelRect(ox + 45, by + 17, 2, 2, '#c87820');
+  }
+
+  // Wings
+  const wingFlap = Math.sin(frameCount * 0.3) * 5;
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillRect(ox + 12, by + 5 + wingFlap, px * 2, px);
+  ctx.fillRect(ox + 7, by + 0 + wingFlap * 1.3, px * 2, px);
+  ctx.fillRect(ox + 2, by - 5 + wingFlap * 1.5, px, px);
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ============ DRAW CAT ============
+function drawCat(x, y, frame, blinking) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(fatScale, fatScale);
+  ctx.translate(-x, -y);
+
+  const px = 5;
+  const ox = Math.floor(x - 28);
+  const oy = Math.floor(y - 25);
+  const bounce = Math.sin(frame * 0.3 + 1) * 2;
+  const by = oy + bounce;
+
+  const tailWave = Math.sin(frameCount * 0.15) * 4;
+  drawPixelRect(ox - 5, by + 15 + tailWave, px, px, '#cc3333');
+  drawPixelRect(ox - 10, by + 10 + tailWave * 1.2, px, px, '#cc3333');
+  drawPixelRect(ox - 15, by + 5 + tailWave * 1.5, px, px, '#b02020');
+  drawPixelRect(ox - 18, by + 0 + tailWave * 1.7, px, px, '#b02020');
+
+  const legAnim = Math.sin(frameCount * 0.25 + 0.5) * 4;
+  drawPixelRect(ox + 8, by + 34 + legAnim, px, px * 2, '#cc3333');
+  drawPixelRect(ox + 8, by + 44 + legAnim, px, px, '#ffcccc');
+
+  for (let i = 0; i < 5; i++) drawPixelRect(ox + 3 + i * px, by + 16, px, px * 4, '#dd4444');
+  for (let i = 0; i < 4; i++) drawPixelRect(ox + 8 + i * px, by + 26, px, px * 2, '#ffaaaa');
+  drawPixelRect(ox + 3, by + 16, px, px * 2, '#b02020');
+  drawPixelRect(ox + 8, by + 16, px, px, '#b02020');
+
+  const flegAnim = Math.sin(frameCount * 0.25 + Math.PI + 0.5) * 4;
+  drawPixelRect(ox + 23, by + 34 + flegAnim, px, px * 2, '#dd4444');
+  drawPixelRect(ox + 23, by + 44 + flegAnim, px, px, '#ffcccc');
+
+  for (let i = 0; i < 4; i++) drawPixelRect(ox + 18 + i * px, by + 2, px, px * 4, '#dd4444');
+  drawPixelRect(ox + 23, by + 12, px * 2, px * 2, '#ffaaaa');
+
+  // Cat ears
+  drawPixelRect(ox + 18, by - 3, px, px, '#dd4444');
+  drawPixelRect(ox + 18, by - 8, px, px, '#cc3333');
+  drawPixelRect(ox + 20, by - 5, 2, 2, '#ffaaaa');
+  drawPixelRect(ox + 33, by - 3, px, px, '#dd4444');
+  drawPixelRect(ox + 35, by - 8, px, px, '#cc3333');
+  drawPixelRect(ox + 34, by - 5, 2, 2, '#ffaaaa');
+
+  // Sunglasses
+  drawPixelRect(ox + 22, by + 6, px * 4, px + 2, '#111');
+  drawPixelRect(ox + 22, by + 6, px + 2, px + 2, '#222');
+  drawPixelRect(ox + 34, by + 6, px + 2, px + 2, '#222');
+  drawPixelRect(ox + 29, by + 7, px, 2, '#111');
+  drawPixelRect(ox + 24, by + 7, 2, 1, '#555');
+  drawPixelRect(ox + 36, by + 7, 2, 1, '#555');
+
+  drawPixelRect(ox + 38, by + 12, px - 1, px - 1, '#882222');
+  drawPixelRect(ox + 35, by + 17, px, 2, '#aa3333');
+  drawPixelRect(ox + 33, by + 15, 2, 2, '#aa3333');
+
+  ctx.fillStyle = '#ffcccc';
+  ctx.fillRect(ox + 38, by + 10, 8, 1);
+  ctx.fillRect(ox + 38, by + 14, 8, 1);
+  ctx.fillRect(ox + 38, by + 12, 6, 1);
+
+  const wingFlap = Math.sin(frameCount * 0.3 + 2) * 5;
+  ctx.fillStyle = 'rgba(255,200,200,0.6)';
+  ctx.fillRect(ox + 10, by + 4 + wingFlap, px * 2, px);
+  ctx.fillRect(ox + 5, by - 1 + wingFlap * 1.3, px * 2, px);
+  ctx.fillRect(ox, by - 6 + wingFlap * 1.5, px, px);
+
+  ctx.restore();
+}
+
+// ============ DRAW BONE ============
+function drawBone(x, y) {
+  const px = 5;
+  const ox = Math.floor(x - 18); const oy = Math.floor(y - 9);
+  ctx.save(); ctx.shadowColor = '#ffe066'; ctx.shadowBlur = 20;
+  drawPixelRect(ox + 10, oy + 5, px * 4, px * 2, '#fff');
+  drawPixelRect(ox, oy, px * 2, px * 2, '#fff');
+  drawPixelRect(ox, oy + 7, px * 2, px * 2, '#fff');
+  drawPixelRect(ox + 5, oy + 3, px, px * 2, '#fff');
+  drawPixelRect(ox + 30, oy, px * 2, px * 2, '#fff');
+  drawPixelRect(ox + 30, oy + 7, px * 2, px * 2, '#fff');
+  drawPixelRect(ox + 25, oy + 3, px, px * 2, '#fff');
+  ctx.restore();
+}
+
+// ============ DRAW TOMATO ============
+function drawTomato(x, y, size) {
+  const px = 5; const s = size || 1;
+  const ox = Math.floor(x - 15 * s); const oy = Math.floor(y - 15 * s);
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      const dist = Math.sqrt((i - 2.5) ** 2 + (j - 2.5) ** 2);
+      if (dist < 3) {
+        let c = '#e53935';
+        if (dist < 1.8) c = '#ff5252';
+        if (i < 2 && j < 2) c = '#c62828';
+        drawPixelRect(ox + i * px * s, oy + j * px * s, px * s, px * s, c);
+      }
+    }
+  }
+  drawPixelRect(ox + 10 * s, oy - 4 * s, px * s, px * s, '#4caf50');
+  drawPixelRect(ox + 5 * s, oy - 2 * s, px * s * 0.8, px * s * 0.8, '#66bb6a');
+  drawPixelRect(ox + 16 * s, oy - 2 * s, px * s * 0.8, px * s * 0.8, '#66bb6a');
+  drawPixelRect(ox + 6 * s, oy + 8 * s, px * s * 0.6, px * s * 0.6, '#000');
+  drawPixelRect(ox + 16 * s, oy + 8 * s, px * s * 0.6, px * s * 0.6, '#000');
+  drawPixelRect(ox + 4 * s, oy + 6 * s, px * s * 0.8, 2 * s, '#800');
+  drawPixelRect(ox + 15 * s, oy + 6 * s, px * s * 0.8, 2 * s, '#800');
+  drawPixelRect(ox + 3 * s, oy + 3 * s, px * s * 0.5, px * s * 0.5, 'rgba(255,255,255,0.4)');
+}
+
+// ============ DRAW SCORE STAR (collectible, stationary in world) ============
+function drawScoreStar(x, y) {
+  const bob = Math.sin(frameCount * 0.06 + x) * 4;
+  const cy = y + bob;
+  const p = 4;
+  const glow = Math.sin(frameCount * 0.08 + x) * 0.3 + 0.7;
+  ctx.globalAlpha = glow;
+  ctx.save(); ctx.shadowColor = '#ffe066'; ctx.shadowBlur = 12;
+  ctx.fillStyle = '#ffe066';
+  ctx.fillRect(x - p * 0.5, cy - p * 2, p, p);
+  ctx.fillRect(x - p * 2, cy - p * 0.5, p * 4, p);
+  ctx.fillRect(x - p * 1.5, cy - p * 1.2, p, p);
+  ctx.fillRect(x + p * 0.5, cy - p * 1.2, p, p);
+  ctx.fillRect(x - p * 1.5, cy + p * 0.5, p, p);
+  ctx.fillRect(x + p * 0.5, cy + p * 0.5, p, p);
+  ctx.fillRect(x - p, cy + p * 1.2, p, p);
+  ctx.fillRect(x + p * 0.2, cy + p * 1.2, p, p);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x - 1, cy - 1, 3, 2);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// ============ DRAW LIFE STAR (big, restores 1 life) ============
+function drawLifeStar(x, y) {
+  const bob = Math.sin(frameCount * 0.04 + x) * 5;
+  const cy = y + bob;
+  const p = 7;
+  const glow = Math.sin(frameCount * 0.06 + x) * 0.2 + 0.8;
+  const pulse = 1 + Math.sin(frameCount * 0.08) * 0.08;
+  ctx.save();
+  ctx.translate(x, cy);
+  ctx.scale(pulse, pulse);
+  ctx.translate(-x, -cy);
+  ctx.globalAlpha = glow;
+  ctx.shadowColor = '#ffdd00'; ctx.shadowBlur = 25;
+  // Outer glow ring
+  ctx.fillStyle = 'rgba(255,224,100,0.25)';
+  for (let a = 0; a < Math.PI * 2; a += 0.4) {
+    ctx.fillRect(x + Math.cos(a) * 22 - 2, cy + Math.sin(a) * 22 - 2, 4, 4);
+  }
+  // Star body
+  ctx.fillStyle = '#ffe066';
+  ctx.fillRect(x - p * 0.5, cy - p * 2.5, p, p);
+  ctx.fillRect(x - p * 2.5, cy - p * 0.5, p * 5, p);
+  ctx.fillRect(x - p * 2, cy - p * 1.5, p, p);
+  ctx.fillRect(x + p, cy - p * 1.5, p, p);
+  ctx.fillRect(x - p * 2, cy + p * 0.5, p, p);
+  ctx.fillRect(x + p, cy + p * 0.5, p, p);
+  ctx.fillRect(x - p * 1.5, cy + p * 1.5, p, p);
+  ctx.fillRect(x + p * 0.5, cy + p * 1.5, p, p);
+  ctx.fillRect(x - p * 0.5, cy + p * 2, p, p);
+  // Inner shine
+  ctx.fillStyle = '#fff5cc';
+  ctx.fillRect(x - 2, cy - 2, 5, 4);
+  // "1UP" text
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('+1', x, cy - p * 2.5 - 4);
+  ctx.textAlign = 'left';
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// ============ DRAW GUN PICKUP ============
+function drawGun(x, y) {
+  const px = 4;
+  const bob = Math.sin(frameCount * 0.07 + y) * 3;
+  const cy = y + bob;
+  ctx.save(); ctx.shadowColor = '#00ffff'; ctx.shadowBlur = 15;
+  // Handle
+  drawPixelRect(x - 6, cy + 2, px * 2, px * 3, '#666');
+  drawPixelRect(x - 6, cy + 12, px * 2, px, '#555');
+  // Body
+  drawPixelRect(x - 8, cy - 4, px * 5, px * 2, '#888');
+  // Barrel
+  drawPixelRect(x + 12, cy - 4, px * 3, px, '#aaa');
+  drawPixelRect(x + 12, cy, px * 2, px * 0.5, '#999');
+  // Trigger
+  drawPixelRect(x - 2, cy + 4, px * 0.5, px, '#555');
+  // Glow dot at barrel tip
+  drawPixelRect(x + 23, cy - 3, 3, 3, '#0ff');
+  ctx.restore();
+}
+
+// ============ DRAW MEAT (BIG) ============
+function drawMeat(x, y) {
+  const px = 7;
+  const bob = Math.sin(frameCount * 0.05 + y) * 4;
+  const cy = y + bob;
+  ctx.save(); ctx.shadowColor = '#ff8844'; ctx.shadowBlur = 15;
+  // Bone sticking out (big)
+  drawPixelRect(x - 18, cy - 14, px, px * 3, '#fff');
+  drawPixelRect(x - 25, cy - 18, px, px, '#fff');
+  drawPixelRect(x - 25, cy - 7, px, px, '#fff');
+  drawPixelRect(x - 25, cy - 14, px * 0.6, px * 0.6, '#eee');
+  drawPixelRect(x - 25, cy - 5, px * 0.6, px * 0.6, '#eee');
+  // Meat body (bigger grid)
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 4; j++) {
+      const dist = Math.sqrt((i - 2) ** 2 + (j - 1.5) ** 2);
+      if (dist < 2.8) {
+        let c = '#cc4422';
+        if (dist < 1.5) c = '#ee6644';
+        if (dist < 0.8) c = '#ff8866';
+        if (i === 0 && j === 0) c = '#aa2200';
+        drawPixelRect(x - 8 + i * px, cy - 8 + j * px, px, px, c);
+      }
+    }
+  }
+  // Fat marbling
+  drawPixelRect(x + 4, cy - 4, 4, 3, '#ffccaa');
+  drawPixelRect(x + 12, cy + 4, 3, 3, '#ffbbaa');
+  drawPixelRect(x + 0, cy + 8, 3, 2, '#ffddcc');
+  // "+100" label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('+100', x + 5, cy - 18);
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+
+// ============ DRAW RAINBOW BEAM ============
+function drawBeam() {
+  if (!gunActive) return;
+  const beamX = dog.x + 30 * fatScale;
+  const beamY = dog.y - 8;
+  const beamWidth = W - beamX;
+  const totalH = 18 + Math.sin(frameCount * 0.4) * 3;
+  const rainbowColors = [
+    'rgba(255,0,0,A)', 'rgba(255,127,0,A)', 'rgba(255,255,0,A)',
+    'rgba(0,255,0,A)', 'rgba(0,127,255,A)', 'rgba(75,0,130,A)', 'rgba(148,0,211,A)'
+  ];
+  const stripeH = totalH / rainbowColors.length;
+  const startY = beamY - totalH / 2;
+
+  // Rainbow stripes
+  rainbowColors.forEach((cTemplate, idx) => {
+    const gradient = ctx.createLinearGradient(beamX, 0, beamX + beamWidth, 0);
+    const c1 = cTemplate.replace('A', '0.9');
+    const c2 = cTemplate.replace('A', '0.5');
+    const c3 = cTemplate.replace('A', '0.05');
+    gradient.addColorStop(0, c1);
+    gradient.addColorStop(0.4, c2);
+    gradient.addColorStop(1, c3);
+    ctx.fillStyle = gradient;
+    // Add slight wave per stripe
+    const wave = Math.sin(frameCount * 0.15 + idx * 0.5) * 2;
+    ctx.fillRect(beamX, startY + idx * stripeH + wave, beamWidth, stripeH + 1);
+  });
+
+  // Bright white core center
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillRect(beamX, beamY - 1, beamWidth * 0.6, 2);
+
+  // Sparkle particles along beam
+  for (let i = 0; i < 8; i++) {
+    const sx = beamX + Math.random() * beamWidth * 0.8;
+    const si = Math.floor(Math.random() * rainbowColors.length);
+    const sy = startY + si * stripeH + (Math.random() - 0.5) * stripeH;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(sx, sy, 3, 3);
+  }
+}
+
+// ============ CLOUDS ============
+function drawCloud(cloud) {
+  const alpha = (cloud.layer === 0 ? 0.3 : 0.6) * (1 - nightTransition * 0.5);
+  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  const px = 4;
+  const cx = Math.floor(cloud.x); const cy = Math.floor(cloud.y);
+  const hw = Math.floor(cloud.w / 2); const hh = Math.floor(cloud.h / 2);
+  for (let i = -hw; i < hw; i += px) {
+    for (let j = -hh; j < hh; j += px) {
+      const nx = i / hw; const ny = j / hh;
+      if (nx * nx + ny * ny < 0.9) ctx.fillRect(cx + i, cy + j, px, px);
+    }
+  }
+}
+
+// ============ BACKGROUND ============
+function drawBackground() {
+  // Day sky
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  const t = (Math.sin(frameCount * 0.005) + 1) / 2;
+
+  if (nightTransition < 0.01) {
+    // Pure day
+    grad.addColorStop(0, lerpColor('#a8d8ea', '#ffd1dc', t * 0.3));
+    grad.addColorStop(0.5, lerpColor('#cce5ff', '#e8d5f5', t * 0.2));
+    grad.addColorStop(1, lerpColor('#f5e6cc', '#d4e6f1', t * 0.4));
+  } else {
+    // Night blend
+    const n = nightTransition;
+    const dayTop = lerpColor('#a8d8ea', '#ffd1dc', t * 0.3);
+    const dayMid = lerpColor('#cce5ff', '#e8d5f5', t * 0.2);
+    const dayBot = lerpColor('#f5e6cc', '#d4e6f1', t * 0.4);
+    grad.addColorStop(0, lerpColorRGB(dayTop, '#0a0a2e', n));
+    grad.addColorStop(0.5, lerpColorRGB(dayMid, '#141432', n));
+    grad.addColorStop(1, lerpColorRGB(dayBot, '#1a1a3e', n));
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Night stars
+  if (nightTransition > 0.1) {
+    nightStars.forEach(s => {
+      const twinkle = Math.sin(frameCount * s.twinkleSpeed + s.phase) * 0.4 + 0.6;
+      ctx.globalAlpha = twinkle * nightTransition;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.size, s.size);
+    });
+    ctx.globalAlpha = 1;
+
+    // Moon
+    if (nightTransition > 0.5) {
+      ctx.globalAlpha = nightTransition;
+      ctx.fillStyle = '#fffde0';
+      const moonX = 680, moonY = 60;
+      for (let i = -3; i <= 3; i++) {
+        for (let j = -3; j <= 3; j++) {
+          if (i * i + j * j <= 10) {
+            ctx.fillRect(moonX + i * 5, moonY + j * 5, 5, 5);
+          }
+        }
+      }
+      // Moon shadow
+      ctx.fillStyle = '#ddd8a0';
+      ctx.fillRect(moonX + 5, moonY - 5, 5, 5);
+      ctx.fillRect(moonX - 5, moonY + 5, 5, 5);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Faint day stars
+  if (nightTransition < 0.5) {
+    ctx.fillStyle = 'rgba(255,255,200,0.5)';
+    for (let i = 0; i < 20; i++) {
+      const sx = (i * 47 + frameCount * 0.1) % W;
+      const sy = (i * 31) % (H * 0.6);
+      const twinkle = Math.sin(frameCount * 0.05 + i) * 0.5 + 0.5;
+      ctx.globalAlpha = twinkle * 0.6 * (1 - nightTransition);
+      ctx.fillRect(Math.floor(sx), Math.floor(sy), 3, 3);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  clouds.filter(c => c.layer === 0).forEach(drawCloud);
+}
+
+function drawForeground() {
+  clouds.filter(c => c.layer === 1).forEach(drawCloud);
+}
+
+function lerpColor(a, b, t) {
+  const ah = parseInt(a.slice(1), 16); const bh = parseInt(b.slice(1), 16);
+  const ar = ah >> 16, ag = (ah >> 8) & 0xff, ab2 = ah & 0xff;
+  const br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff;
+  return `rgb(${Math.round(ar + (br - ar) * t)},${Math.round(ag + (bg - ag) * t)},${Math.round(ab2 + (bb - ab2) * t)})`;
+}
+
+function lerpColorRGB(rgbStr, hexB, t) {
+  // Parse rgb(r,g,b) or #hex
+  let ar, ag, ab2;
+  if (rgbStr.startsWith('rgb')) {
+    const m = rgbStr.match(/(\d+)/g);
+    ar = +m[0]; ag = +m[1]; ab2 = +m[2];
+  } else {
+    const h = parseInt(rgbStr.slice(1), 16);
+    ar = h >> 16; ag = (h >> 8) & 0xff; ab2 = h & 0xff;
+  }
+  const bh = parseInt(hexB.slice(1), 16);
+  const br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff;
+  return `rgb(${Math.round(ar + (br - ar) * t)},${Math.round(ag + (bg - ag) * t)},${Math.round(ab2 + (bb - ab2) * t)})`;
+}
+
+function addParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5,
+      life: 30 + Math.random() * 20, color, size: 3 + Math.random() * 4
+    });
+  }
+}
+
+function addHeart(x, y) {
+  hearts.push({ x, y, vy: -1.5, life: 40, scale: 1 });
+}
+
+function drawHeart(x, y, scale) {
+  const px = 3 * scale;
+  ctx.fillStyle = '#ff6b8a';
+  drawPixelRect(x - px, y - px * 2, px, px, '#ff6b8a');
+  drawPixelRect(x + px, y - px * 2, px, px, '#ff6b8a');
+  drawPixelRect(x - px * 2, y - px, px * 4 + px, px, '#ff6b8a');
+  drawPixelRect(x - px, y, px * 3, px, '#ff6b8a');
+  drawPixelRect(x, y + px, px, px, '#ff6b8a');
+}
+
+function spawnTomato() {
+  tomatoSpawnCount++;
+  const speed = 2.5 + difficulty * 0.3;
+  const y = 50 + Math.random() * (H - 100);
+  tomatoes.push({
+    x: W + 30, y, vx: -(speed + Math.random()),
+    vy: (Math.random() - 0.5) * 1.5,
+    size: 1 + Math.random() * 0.4, rotation: 0,
+    rotSpeed: (Math.random() - 0.5) * 0.1
+  });
+
+  // Gun pickup: every ~30 tomatoes
+  if (tomatoSpawnCount % 30 === 0 && !gunActive) {
+    gunPickups.push({
+      x: W + 30, y: 60 + Math.random() * (H - 120),
+      vx: -(speed * 0.8)
+    });
+  }
+
+  // Meat pickup: every ~10 tomatoes
+  if (tomatoSpawnCount % 10 === 0) {
+    meatPickups.push({
+      x: W + 30, y: 60 + Math.random() * (H - 120),
+      vx: -(speed * 0.7)
+    });
+  }
+
+  // Life star: every ~40 tomatoes
+  if (tomatoSpawnCount % 40 === 0) {
+    lifeStars.push({
+      x: W + 30, y: 60 + Math.random() * (H - 120),
+      vx: -(speed * 0.6)
+    });
+  }
+}
+
+function collides(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+// ============ UPDATE ============
+function update() {
+  frameCount++;
+
+  // Blink logic
+  dog.blinkTimer++;
+  if (!dog.isBlinking && dog.blinkTimer >= dog.blinkInterval) { dog.isBlinking = true; dog.blinkTimer = 0; }
+  if (dog.isBlinking && dog.blinkTimer >= dog.blinkDuration) { dog.isBlinking = false; dog.blinkTimer = 0; dog.blinkInterval = 120 + Math.random() * 120; }
+  cat.blinkTimer++;
+  if (!cat.isBlinking && cat.blinkTimer >= cat.blinkInterval) { cat.isBlinking = true; cat.blinkTimer = 0; }
+  if (cat.isBlinking && cat.blinkTimer >= cat.blinkDuration) { cat.isBlinking = false; cat.blinkTimer = 0; cat.blinkInterval = 100 + Math.random() * 100; }
+
+  if (gameState === 'playing') {
+    difficulty = 1 + score * 0.002;
+
+    // Score timer: +10 every second (60 frames)
+    if (frameCount % 60 === 0) {
+      score += 10;
+      scoreText.textContent = `SCORE: ${score}`;
+    }
+
+    // Dog physics
+    if (isSpaceHeld) {
+      dog.vy += dog.floatPower;
+      if (frameCount % 5 === 0) addParticles(dog.x - 15, dog.y + 15, '#fff', 1);
+    } else {
+      dog.vy += dog.gravity;
+    }
+    if (dog.vy < dog.maxRiseSpeed) dog.vy = dog.maxRiseSpeed;
+    if (dog.vy > dog.maxFallSpeed) dog.vy = dog.maxFallSpeed;
+    dog.y += dog.vy;
+    dog.animTimer++;
+    if (dog.animTimer > 8) { dog.animFrame++; dog.animTimer = 0; }
+    if (dog.y < 30) { dog.y = 30; dog.vy = 0; }
+    if (dog.y > H - 30) { dog.y = H - 30; dog.vy = 0; }
+
+    // Cat follows
+    cat.x += ((dog.x - 70) - cat.x) * 0.06;
+    cat.y += ((dog.y + 5) - cat.y) * 0.06;
+    cat.animTimer++;
+    if (cat.animTimer > 8) { cat.animFrame++; cat.animTimer = 0; }
+
+    if (invincibleTimer > 0) invincibleTimer--;
+
+    // Fat shrink back to normal
+    if (fatScale > 1) {
+      fatScale -= 0.002;
+      if (fatScale < 1) fatScale = 1;
+    }
+
+    // Gun timer
+    if (gunActive) {
+      gunTimer--;
+      // Night transition in
+      if (nightTransition < 1) nightTransition = Math.min(1, nightTransition + 0.05);
+      // Rainbow beam destroys tomatoes (wider hitbox for rainbow)
+      const beamY = dog.y - 8;
+      const beamX = dog.x + 30 * fatScale;
+      tomatoes = tomatoes.filter(t => {
+        if (t.x > beamX && Math.abs(t.y - beamY) < 35) {
+          addParticles(t.x, t.y, '#ff5252', 8);
+          addParticles(t.x, t.y, '#ff0', 4);
+          score += 2;
+          return false;
+        }
+        return true;
+      });
+      // Speed boost effect: tomatoes and everything move faster
+      if (gunTimer <= 0) {
+        gunActive = false;
+        stopGunBGM();
+        startBGM();
+      }
+    } else {
+      // Night transition out
+      if (nightTransition > 0) nightTransition = Math.max(0, nightTransition - 0.02);
+    }
+
+    // Bone movement (decorative)
+    bone.bobOffset += 0.05;
+    bone.y = H / 2 + Math.sin(bone.bobOffset) * 80;
+    bone.x = W - 100 + Math.sin(bone.bobOffset * 0.7) * 40;
+
+    // Spawn tomatoes
+    const baseRate = gunActive ? 20 : Math.max(35, 75 - difficulty * 5);
+    if (frameCount % Math.floor(baseRate) === 0) spawnTomato();
+
+    // Update tomatoes
+    const speedMul = gunActive ? 1.8 : 1;
+    tomatoes.forEach(t => {
+      t.x += t.vx * speedMul;
+      t.y += t.vy;
+      t.rotation += t.rotSpeed;
+      if (t.y < 30 || t.y > H - 30) t.vy *= -1;
+    });
+    tomatoes = tomatoes.filter(t => t.x > -50);
+
+    // Collision: tomatoes (only if not invincible and not gun active)
+    if (invincibleTimer <= 0 && !gunActive) {
+      for (const t of tomatoes) {
+        const tSize = 18 * t.size;
+        const dogR = 22 * fatScale;
+        if (collides(dog.x - dogR, dog.y - dogR, dogR * 2, dogR * 2, t.x - tSize, t.y - tSize, tSize * 2, tSize * 2)) {
+          lives--;
+          updateLivesUI();
+          addParticles(dog.x, dog.y, '#ff5252', 15);
+          playSound('tomato');
+          if (lives <= 0) {
+            gameState = 'gameover';
+            addParticles(dog.x, dog.y, '#f0b040', 15);
+            stopBGM(); stopGunBGM();
+            if (score > bestScore) bestScore = score;
+            bestText.textContent = `BEST: ${bestScore}`;
+            overlay.classList.remove('hidden');
+            overlay.innerHTML = `
+              <h2>게임 오버!</h2>
+              <div class="score-display">SCORE: ${score}</div>
+              <div class="score-display">BEST: ${bestScore}</div>
+              <p>토마토에 부딪혔어요!</p>
+              <button class="btn" id="retryBtn">다시 시작</button>
+            `;
+            document.getElementById('retryBtn').addEventListener('click', startGame);
+            return;
+          } else {
+            invincibleTimer = 90;
+          }
+          break;
+        }
+      }
+    }
+
+    // Scroll offset advances (world moves left)
+    scrollOffset += 2 * speedMul;
+
+    // Collision: score stars (stationary in world, screen-x = wx - scrollOffset)
+    scoreStars.forEach(s => {
+      if (s.collected) return;
+      const screenX = s.wx - scrollOffset + W; // offset so they appear on screen
+      const bob = Math.sin(frameCount * 0.06 + s.wx) * 4;
+      if (collides(dog.x - 20, dog.y - 20, 40, 40, screenX - 10, s.y + bob - 10, 20, 20)) {
+        s.collected = true;
+        score += 5;
+        scoreText.textContent = `SCORE: ${score}`;
+        addParticles(screenX, s.y, '#ffe066', 8);
+        playSound('star');
+      }
+    });
+    // Remove offscreen / collected stars, respawn ahead
+    scoreStars = scoreStars.filter(s => {
+      if (s.collected) return false;
+      const screenX = s.wx - scrollOffset + W;
+      return screenX > -30;
+    });
+    if (scoreStars.length < 4 && frameCount % 90 === 0) {
+      scoreStars.push({
+        wx: scrollOffset + W + Math.random() * W * 0.8,
+        y: 50 + Math.random() * (H - 100),
+        collected: false
+      });
+    }
+
+    // Collision: bone (just gives +5 now)
+    if (collides(dog.x - 22, dog.y - 22, 44, 44, bone.x - 18, bone.y - 10, 36, 20)) {
+      score += 5;
+      scoreText.textContent = `SCORE: ${score}`;
+      addHeart(bone.x, bone.y - 25);
+      addParticles(bone.x, bone.y, '#ffe066', 10);
+      playSound('bone');
+      bone.bobOffset = Math.random() * Math.PI * 2;
+      bone.x = W - 80 + Math.random() * 60;
+      bone.y = 60 + Math.random() * (H - 120);
+    }
+
+    // Update gun pickups
+    gunPickups.forEach(g => { g.x += g.vx * speedMul; });
+    gunPickups = gunPickups.filter(g => g.x > -40);
+    // Collision: gun
+    for (let i = gunPickups.length - 1; i >= 0; i--) {
+      const g = gunPickups[i];
+      if (collides(dog.x - 22, dog.y - 22, 44, 44, g.x - 15, g.y - 12, 30, 24)) {
+        gunActive = true;
+        gunTimer = GUN_DURATION;
+        addParticles(g.x, g.y, '#0ff', 15);
+        playSound('gun');
+        stopBGM();
+        startGunBGM();
+        gunPickups.splice(i, 1);
+      }
+    }
+
+    // Update meat pickups
+    meatPickups.forEach(m => { m.x += m.vx * speedMul; });
+    meatPickups = meatPickups.filter(m => m.x > -50);
+    // Collision: meat (does NOT cancel gun state)
+    for (let i = meatPickups.length - 1; i >= 0; i--) {
+      const m = meatPickups[i];
+      if (collides(dog.x - 22, dog.y - 22, 44, 44, m.x - 18, m.y - 14, 40, 32)) {
+        fatScale = 1.8;
+        invincibleTimer = 180; // 3 seconds invincibility
+        score += 100;
+        scoreText.textContent = `SCORE: ${score}`;
+        addParticles(m.x, m.y, '#ff8844', 12);
+        addParticles(m.x, m.y, '#ffcc88', 6);
+        playSound('meat');
+        meatPickups.splice(i, 1);
+        // Gun state preserved - no change to gunActive/gunTimer
+      }
+    }
+
+    // Update life stars
+    lifeStars.forEach(ls => { ls.x += ls.vx * speedMul; });
+    lifeStars = lifeStars.filter(ls => ls.x > -50);
+    // Collision: life star
+    for (let i = lifeStars.length - 1; i >= 0; i--) {
+      const ls = lifeStars[i];
+      const bob = Math.sin(frameCount * 0.04 + ls.x) * 5;
+      if (collides(dog.x - 22, dog.y - 22, 44, 44, ls.x - 20, ls.y + bob - 20, 40, 40)) {
+        lives = Math.min(lives + 1, 5); // max 5 lives
+        updateLivesUI();
+        addParticles(ls.x, ls.y, '#ffe066', 15);
+        addParticles(ls.x, ls.y, '#fff', 8);
+        addHeart(ls.x, ls.y - 25);
+        playSound('life');
+        lifeStars.splice(i, 1);
+      }
+    }
+
+    // Update clouds
+    clouds.forEach(c => {
+      c.x -= c.speed * speedMul;
+      if (c.x + c.w < 0) { c.x = W + c.w; c.y = Math.random() * H; }
+    });
+  }
+
+  // Particles
+  particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; p.vx *= 0.95; p.vy *= 0.95; });
+  particles = particles.filter(p => p.life > 0);
+  hearts.forEach(h => { h.y += h.vy; h.life--; h.scale *= 0.98; });
+  hearts = hearts.filter(h => h.life > 0);
+}
+
+// ============ DRAW ============
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawBackground();
+
+  if (gameState === 'playing' || gameState === 'gameover') {
+    // Score stars (stationary in world)
+    scoreStars.forEach(s => {
+      if (s.collected) return;
+      const screenX = s.wx - scrollOffset + W;
+      if (screenX > -20 && screenX < W + 20) drawScoreStar(screenX, s.y);
+    });
+
+    // Tomatoes
+    tomatoes.forEach(t => {
+      ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(t.rotation);
+      drawTomato(0, 0, t.size); ctx.restore();
+    });
+
+    // Gun pickups
+    gunPickups.forEach(g => drawGun(g.x, g.y));
+
+    // Meat pickups
+    meatPickups.forEach(m => drawMeat(m.x, m.y));
+
+    // Life stars
+    lifeStars.forEach(ls => drawLifeStar(ls.x, ls.y));
+
+    // Bone
+    drawBone(bone.x, bone.y);
+
+    if (gameState === 'playing') {
+      // Beam (behind characters)
+      drawBeam();
+      // Cat
+      drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
+      // Dog
+      drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+    }
+
+    drawForeground();
+
+    // Particles
+    particles.forEach(p => {
+      ctx.globalAlpha = p.life / 50;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(Math.floor(p.x), Math.floor(p.y), Math.floor(p.size), Math.floor(p.size));
+    });
+    ctx.globalAlpha = 1;
+
+    // Hearts
+    hearts.forEach(h => {
+      ctx.globalAlpha = h.life / 40;
+      drawHeart(h.x, h.y, h.scale);
+    });
+    ctx.globalAlpha = 1;
+
+    // Gun timer bar
+    if (gunActive) {
+      const barW = 120;
+      const barH = 8;
+      const bx = W / 2 - barW / 2;
+      const barY = H - 25;
+      const ratio = gunTimer / GUN_DURATION;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(bx - 2, barY - 2, barW + 4, barH + 4);
+      // Rainbow bar
+      const barGrad = ctx.createLinearGradient(bx, 0, bx + barW * ratio, 0);
+      barGrad.addColorStop(0, '#ff0000'); barGrad.addColorStop(0.16, '#ff7f00');
+      barGrad.addColorStop(0.33, '#ffff00'); barGrad.addColorStop(0.5, '#00ff00');
+      barGrad.addColorStop(0.66, '#007fff'); barGrad.addColorStop(0.83, '#4b0082');
+      barGrad.addColorStop(1, '#9400d3');
+      ctx.fillStyle = barGrad;
+      ctx.fillRect(bx, barY, barW * ratio, barH);
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px Courier New';
+      ctx.fillText('RAINBOW', bx + barW / 2 - 22, barY - 5);
+    }
+  }
+
+  // Menu
+  if (gameState === 'menu') {
+    drawForeground();
+    const previewY = H / 2 + Math.sin(frameCount * 0.03) * 15;
+    drawCat(W / 2 - 70, previewY + 5, cat.animFrame, cat.isBlinking);
+    drawDog(W / 2, previewY, dog.animFrame, dog.isBlinking);
+    drawBone(W / 2 + 100, previewY - 10);
+    // Show a score star and meat in menu
+    drawScoreStar(W / 2 + 140, previewY + 20);
+    drawMeat(W / 2 - 120, previewY - 20);
+
+    for (let i = 0; i < 3; i++) {
+      const hx = W / 2 + 55 + Math.sin(frameCount * 0.04 + i * 2) * 10;
+      const hy = previewY - 35 - i * 14 + Math.sin(frameCount * 0.05 + i) * 5;
+      ctx.globalAlpha = 0.6;
+      drawHeart(hx, hy, 0.8);
+    }
+    ctx.globalAlpha = 1;
+    dog.animTimer++; if (dog.animTimer > 8) { dog.animFrame++; dog.animTimer = 0; }
+    cat.animTimer++; if (cat.animTimer > 8) { cat.animFrame++; cat.animTimer = 0; }
+    clouds.forEach(c => {
+      c.x -= c.speed * 0.5;
+      if (c.x + c.w < 0) { c.x = W + c.w; c.y = Math.random() * H; }
+    });
+  }
+}
+
+function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
+
+function startGame() {
+  reset();
+  gameState = 'playing';
+  overlay.classList.add('hidden');
+  ensureAudio();
+  stopGunBGM();
+  startBGM();
+}
+
+// Input
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    if (gameState === 'menu') startGame();
+    else isSpaceHeld = true;
+  }
+  // ESC: swap dog and cat positions
+  if (e.code === 'Escape' && gameState === 'playing') {
+    swapped = !swapped;
+    const tmpX = dog.x, tmpY = dog.y;
+    dog.x = cat.x; dog.y = cat.y;
+    cat.x = tmpX; cat.y = tmpY;
+    addParticles(dog.x, dog.y, '#ffe066', 6);
+    addParticles(cat.x, cat.y, '#ff6666', 6);
+  }
+});
+document.addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') isSpaceHeld = false;
+});
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  if (gameState === 'menu') startGame();
+  else if (gameState === 'playing') isSpaceHeld = true;
+});
+canvas.addEventListener('mouseup', () => { isSpaceHeld = false; });
+canvas.addEventListener('mouseleave', () => { isSpaceHeld = false; });
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (gameState === 'menu') startGame();
+  else if (gameState === 'playing') isSpaceHeld = true;
+}, { passive: false });
+canvas.addEventListener('touchend', () => { isSpaceHeld = false; });
+startBtn.addEventListener('click', startGame);
+
+// Init
+initClouds();
+initNightStars();
+updateLivesUI();
+gameLoop();
+</script>
+</body>
+</html>
