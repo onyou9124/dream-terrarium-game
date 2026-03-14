@@ -51,10 +51,9 @@
   #overlay .btn:hover { transform: scale(1.05); }
   #overlay .btn:active { transform: scale(0.95); box-shadow: 1px 1px 0 #000; }
   #helpBtn {
-    position: absolute; top: 10px; right: 10px; z-index: 25;
-    width: 36px; height: 36px; border-radius: 50%;
-    background: rgba(255,255,255,0.85); border: 3px solid #333;
-    font-size: 20px; font-weight: bold; color: #333;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.85); border: 2px solid #333;
+    font-size: 16px; font-weight: bold; color: #333;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
     box-shadow: 2px 2px 0 rgba(0,0,0,0.3); font-family: 'Courier New', monospace;
   }
@@ -86,12 +85,16 @@
 <div id="gameContainer">
   <canvas id="game" width="800" height="500"></canvas>
   <div id="ui">
-    <span id="scoreText">SCORE: 0</span>
+    <div style="display:flex;align-items:center;gap:8px;pointer-events:all;">
+      <span id="scoreText">SCORE: 0</span>
+      <button id="pauseBtn" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.85);border:2px solid #333;font-size:14px;font-weight:bold;color:#333;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 rgba(0,0,0,0.3);font-family:'Courier New',monospace;">||</button>
+    </div>
     <div id="livesContainer"></div>
-    <span id="bestText">BEST: 0</span>
+    <div style="display:flex;align-items:center;gap:8px;pointer-events:all;">
+      <span id="bestText">BEST: 0</span>
+      <button id="helpBtn" style="position:static;width:28px;height:28px;">?</button>
+    </div>
   </div>
-  <button id="pauseBtn" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.85);border:3px solid #333;font-size:18px;font-weight:bold;color:#333;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 rgba(0,0,0,0.3);font-family:'Courier New',monospace;">||</button>
-  <button id="helpBtn">?</button>
   <div id="helpModal">
     <div class="help-content">
       <h3>아이템 설명서</h3>
@@ -392,6 +395,15 @@ let pausedBgmState = null;
 
 // Stage system (0=Sky, 1=Hell, 2=Underwater, 3=Heaven)
 let currentStage = 0;
+const stageThresholds = [0, 1500, 3500, 6500];
+let stageTransitionTimer = 0;
+const stageDisplayNames = ['STAGE 1 - SKY', 'STAGE 2 - HELL', 'STAGE 3 - UNDERWATER', 'STAGE 4 - HEAVEN'];
+
+// Ending sequence
+let endingFrame = -1;
+let endingNarrated = false;
+let endingBgmInterval = null;
+let endingScrollY = 0;
 
 // City buildings for cat mode
 let cityBuildings = [];
@@ -501,6 +513,8 @@ function reset() {
   fatScale = 1; tomatoSpawnCount = 0; beamFlashTimer = 0;
   scrollOffset = 0; swapped = false; gameStartFrame = 0;
   gamePaused = false; countdownTimer = 0; pausedBgmState = null; currentStage = 0;
+  stageTransitionTimer = 0; endingFrame = -1; endingNarrated = false; endingScrollY = 0;
+  if (endingBgmInterval) { clearInterval(endingBgmInterval); endingBgmInterval = null; }
   scoreText.textContent = 'SCORE: 0';
   updateLivesUI();
   spawnScoreStars();
@@ -1278,11 +1292,30 @@ function update() {
 
     // Stage computation
     const prevStage = currentStage;
-    currentStage = score < 1000 ? 0 : score < 2000 ? 1 : score < 3000 ? 2 : 3;
-    // Stage changed: restart BGM for new stage melody (if not gun/cat BGM)
-    if (currentStage !== prevStage && !gunActive && !swapped) {
-      stopBGM();
-      startBGM();
+    currentStage = score < 1500 ? 0 : score < 3500 ? 1 : score < 6500 ? 2 : 3;
+
+    // Stage transition timer countdown
+    if (stageTransitionTimer > 0) stageTransitionTimer--;
+
+    // Stage changed
+    if (currentStage !== prevStage) {
+      stageTransitionTimer = 150; // ~2.5 sec transition screen
+      // Reset to dog on stage change
+      if (swapped) {
+        const leader = cat;
+        dog.x = leader.x; dog.y = leader.y; dog.vy = leader.vy;
+        swapped = false;
+        stopCatBGM();
+        addParticles(dog.x, dog.y, '#ffe066', 8);
+      }
+      // Restart BGM for new stage
+      if (!gunActive) { stopBGM(); startBGM(); }
+    }
+
+    // All stages cleared: trigger ending after playing through stage 4 (score >= 10000)
+    if (currentStage === 3 && score >= 10000 && gameState === 'playing') {
+      startEnding();
+      return;
     }
 
     // Update stage particles
@@ -1368,7 +1401,7 @@ function update() {
 
     // Spawn tomatoes (slower at start, faster over time)
     const baseRate = gunActive ? 20 : Math.max(30, 80 - difficulty * 8);
-    if (frameCount % Math.floor(baseRate) === 0) spawnTomato();
+    if (frameCount % Math.floor(baseRate) === 0 && stageTransitionTimer <= 0) spawnTomato();
 
     // Spawn ground obstacles periodically
     if (gameStartFrame % Math.max(180, 400 - timePhase * 30) === 0) {
@@ -1725,36 +1758,325 @@ function drawCountdown() {
 }
 
 function drawStageIndicator() {
-  if (gameState !== 'playing') return;
+  if (gameState !== 'playing' && gameState !== 'ending') return;
   const barX = W - 22;
   const barH = H - 100;
   const barY = 50;
-  const stageColors = ['#87CEEB', '#FF4500', '#0077BE', '#FFD700'];
-  const stageNames = ['SKY', 'HELL', 'SEA', 'HEAVEN'];
+  const colors = ['#4488ff', '#9933ff', '#ff3333', '#ffd700']; // blue, purple, red, yellow
+  const sectionH = barH / 4;
   // Background
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.fillRect(barX - 2, barY - 2, 19, barH + 4);
-  // Fill based on progress within current stage
-  const stageBase = currentStage * 1000;
-  const progress = currentStage >= 3 ? 1 : Math.min(1, Math.max(0, (score - stageBase) / 1000));
-  const fillH = barH * progress;
-  ctx.fillStyle = stageColors[currentStage];
-  ctx.fillRect(barX, barY + barH - fillH, 15, fillH);
-  // Border lines for stages
-  for (let i = 1; i < 4; i++) {
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.fillRect(barX, barY + barH * (1 - i / 4), 15, 1);
+  // Draw 4 sections bottom to top (stage 0 at bottom, stage 3 at top)
+  for (let i = 0; i < 4; i++) {
+    const secY = barY + barH - (i + 1) * sectionH;
+    if (i < currentStage) {
+      // Completed stage: fully filled
+      ctx.fillStyle = colors[i];
+      ctx.fillRect(barX, secY, 15, sectionH);
+    } else if (i === currentStage) {
+      // Current stage: partially filled
+      const stageStart = stageThresholds[i];
+      const stageEnd = i < 3 ? stageThresholds[i + 1] : stageStart + 3000;
+      const progress = Math.min(1, Math.max(0, (score - stageStart) / (stageEnd - stageStart)));
+      const fillH = sectionH * progress;
+      // Dark background for unfilled part
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(barX, secY, 15, sectionH);
+      // Filled part from bottom of section
+      ctx.fillStyle = colors[i];
+      ctx.fillRect(barX, secY + sectionH - fillH, 15, fillH);
+    } else {
+      // Future stage: dark/empty
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(barX, secY, 15, sectionH);
+    }
+    // Section border
+    if (i > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(barX, secY + sectionH, 15, 1);
+    }
   }
   // Stage label (rotated)
+  const stageLabels = ['SKY', 'HELL', 'SEA', 'HEAVEN'];
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 9px Courier New';
   ctx.textAlign = 'center';
   ctx.save();
   ctx.translate(barX + 7, barY + barH / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.fillText(stageNames[currentStage], 0, 4);
+  ctx.fillText(stageLabels[currentStage], 0, 4);
   ctx.restore();
   ctx.textAlign = 'left';
+}
+
+function drawStageTransition() {
+  if (stageTransitionTimer <= 0) return;
+  const alpha = Math.min(1, stageTransitionTimer / 30); // fade out in last 30 frames
+  ctx.fillStyle = `rgba(0,0,0,${0.6 * alpha})`;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#ffe066';
+  ctx.font = 'bold 36px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(stageDisplayNames[currentStage], W / 2, H / 2);
+  // Subtitle
+  ctx.fillStyle = '#fff';
+  ctx.font = '16px Courier New';
+  ctx.fillText('GET READY!', W / 2, H / 2 + 40);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.globalAlpha = 1;
+}
+
+// ============ ENDING SEQUENCE ============
+function startEnding() {
+  gameState = 'ending';
+  endingFrame = 0;
+  endingNarrated = false;
+  endingScrollY = 0;
+  stopBGM(); stopGunBGM(); stopCatBGM();
+  gunActive = false; nightTransition = 0;
+  // Reset to dog
+  if (swapped) {
+    dog.x = cat.x; dog.y = cat.y; dog.vy = 0;
+    swapped = false;
+  }
+  // Clear threats
+  tomatoes = []; groundObstacles = [];
+  startEndingBGM();
+}
+
+function startEndingBGM() {
+  if (endingBgmInterval) return;
+  ensureAudio();
+  // Angelic arpeggio
+  const chords = [
+    [523, 659, 784], [587, 698, 880], [659, 784, 988],
+    [523, 784, 1047], [587, 880, 1175], [659, 988, 1319],
+    [784, 988, 1175], [659, 784, 1047]
+  ];
+  let idx = 0;
+  const step = () => {
+    if (!audioCtx || gameState !== 'ending') { stopEndingBGM(); return; }
+    const chord = chords[idx % chords.length];
+    chord.forEach((freq, i) => {
+      playNote(freq, 0.6, 'sine', 0.03, audioCtx.currentTime + i * 0.12);
+    });
+    // Low bass
+    playNote(chord[0] * 0.25, 0.8, 'sine', 0.025);
+    idx++;
+  };
+  step();
+  endingBgmInterval = setInterval(step, 800);
+}
+
+function stopEndingBGM() {
+  if (endingBgmInterval) { clearInterval(endingBgmInterval); endingBgmInterval = null; }
+}
+
+function updateEnding() {
+  endingFrame++;
+  frameCount++;
+
+  // Phase 1 (0-120): Move characters to center
+  if (endingFrame < 120) {
+    const targetX = W / 2 - 20;
+    const targetY = H / 2;
+    dog.x += (targetX - dog.x) * 0.04;
+    dog.y += (targetY - dog.y) * 0.04;
+    cat.x += (targetX - 70 - cat.x) * 0.04;
+    cat.y += (targetY + 5 - cat.y) * 0.04;
+    dog.vy = 0;
+    bone.x += (W / 2 + 50 - bone.x) * 0.04;
+    bone.y += (targetY - 10 - bone.y) * 0.04;
+  }
+  // Phase 2 (120-300): Celebrate
+  else if (endingFrame < 300) {
+    const bounce = Math.sin(endingFrame * 0.1) * 8;
+    dog.y = H / 2 + bounce;
+    cat.y = H / 2 + 5 - bounce;
+    bone.y = H / 2 - 10 + Math.sin(endingFrame * 0.08) * 5;
+    if (endingFrame % 20 === 0) {
+      addParticles(dog.x, dog.y - 20, '#ffe066', 5);
+      addParticles(cat.x, cat.y - 20, '#ff6666', 5);
+      addHeart(dog.x + 20, dog.y - 30);
+    }
+  }
+  // Phase 3 (300-600): Fly upward, scroll
+  else if (endingFrame < 600) {
+    const flySpeed = (endingFrame - 300) * 0.008;
+    endingScrollY += flySpeed;
+    const bounce = Math.sin(endingFrame * 0.08) * 5;
+    dog.y = H / 2 - 20 + bounce;
+    cat.y = H / 2 - 15 - bounce;
+    bone.y = H / 2 - 30 + Math.sin(endingFrame * 0.06) * 3;
+    if (endingFrame % 15 === 0) addParticles(W / 2, H / 2 + 50, '#fff', 3);
+  }
+  // Phase 4 (600+): Dance, narration, congrats
+  else {
+    const dance = Math.sin(endingFrame * 0.06) * 12;
+    dog.x = W / 2 - 20 + dance;
+    dog.y = H / 2 - 30 + Math.sin(endingFrame * 0.1) * 5;
+    cat.x = W / 2 - 90 - dance;
+    cat.y = H / 2 - 25 + Math.sin(endingFrame * 0.1 + 1) * 5;
+    bone.y = H / 2 - 60 + Math.sin(endingFrame * 0.05) * 8;
+    if (endingFrame % 25 === 0) {
+      addParticles(dog.x, dog.y - 20, '#ffe066', 3);
+      addHeart(cat.x + 15, cat.y - 25);
+    }
+    // Narration at frame 650
+    if (endingFrame === 650 && !endingNarrated) {
+      endingNarrated = true;
+      try {
+        const utter = new SpeechSynthesisUtterance(
+          'Congratulations. You have finally obtained this magnificent and wonderful bone. You are magnificent.'
+        );
+        utter.lang = 'en-US';
+        utter.rate = 0.78;
+        utter.pitch = 0.5; // deep male voice
+        // Try to find a deep male English voice
+        const voices = speechSynthesis.getVoices();
+        const maleVoice = voices.find(v => v.lang.startsWith('en') && /daniel|james|david|google uk male|male/i.test(v.name)) ||
+                          voices.find(v => v.lang.startsWith('en') && !/female|samantha|victoria|karen|moira|fiona|tessa/i.test(v.name)) ||
+                          voices.find(v => v.lang.startsWith('en'));
+        if (maleVoice) utter.voice = maleVoice;
+        speechSynthesis.speak(utter);
+      } catch (e) { /* speech synthesis not available */ }
+    }
+  }
+
+  // Update particles/hearts
+  particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; p.vx *= 0.95; p.vy *= 0.95; });
+  particles = particles.filter(p => p.life > 0);
+  hearts.forEach(h => { h.y += h.vy; h.life--; h.scale *= 0.98; });
+  hearts = hearts.filter(h => h.life > 0);
+
+  // Blink
+  dog.blinkTimer++; cat.blinkTimer++;
+  if (!dog.isBlinking && dog.blinkTimer >= dog.blinkInterval) { dog.isBlinking = true; dog.blinkTimer = 0; }
+  if (dog.isBlinking && dog.blinkTimer >= dog.blinkDuration) { dog.isBlinking = false; dog.blinkTimer = 0; dog.blinkInterval = 120 + Math.random() * 120; }
+  if (!cat.isBlinking && cat.blinkTimer >= cat.blinkInterval) { cat.isBlinking = true; cat.blinkTimer = 0; }
+  if (cat.isBlinking && cat.blinkTimer >= cat.blinkDuration) { cat.isBlinking = false; cat.blinkTimer = 0; cat.blinkInterval = 100 + Math.random() * 100; }
+  dog.animTimer++; if (dog.animTimer > 8) { dog.animFrame++; dog.animTimer = 0; }
+  cat.animTimer++; if (cat.animTimer > 8) { cat.animFrame++; cat.animTimer = 0; }
+}
+
+function drawEnding() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Rainbow aurora background
+  const phase = endingFrame * 0.005;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  if (endingFrame < 300) {
+    // Transition from heaven to rainbow
+    const t = Math.min(1, endingFrame / 300);
+    grad.addColorStop(0, lerpColor('#fff8e0', '#ff88cc', t));
+    grad.addColorStop(0.3, lerpColor('#ffe8a0', '#aa66ff', t));
+    grad.addColorStop(0.6, lerpColor('#ffdd70', '#6688ff', t));
+    grad.addColorStop(1, lerpColor('#fff5cc', '#88ffaa', t));
+  } else {
+    // Full rainbow cycling
+    const hueShift = endingFrame * 0.3;
+    const colors = [
+      `hsl(${(hueShift) % 360}, 70%, 85%)`,
+      `hsl(${(hueShift + 60) % 360}, 70%, 75%)`,
+      `hsl(${(hueShift + 120) % 360}, 70%, 80%)`,
+      `hsl(${(hueShift + 200) % 360}, 70%, 85%)`
+    ];
+    grad.addColorStop(0, colors[0]);
+    grad.addColorStop(0.33, colors[1]);
+    grad.addColorStop(0.66, colors[2]);
+    grad.addColorStop(1, colors[3]);
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Sparkle stars
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  for (let i = 0; i < 30; i++) {
+    const sx = (i * 29 + endingFrame * 0.3) % W;
+    const sy = ((i * 19 + endingScrollY * 20) % H + H) % H;
+    const twinkle = Math.sin(endingFrame * 0.06 + i) * 0.4 + 0.6;
+    ctx.globalAlpha = twinkle;
+    ctx.fillRect(sx, sy, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  // Light beams
+  if (endingFrame > 200) {
+    for (let i = 0; i < 5; i++) {
+      const rx = 100 + i * 160 + Math.sin(endingFrame * 0.01 + i) * 30;
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      ctx.moveTo(rx - 15, 0); ctx.lineTo(rx + 15, 0);
+      ctx.lineTo(rx + 40, H); ctx.lineTo(rx - 40, H);
+      ctx.fill();
+    }
+  }
+
+  // Bone
+  drawBone(bone.x, bone.y);
+
+  // Characters
+  drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
+  drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+
+  // Particles & hearts
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(Math.floor(p.x), Math.floor(p.y), Math.floor(p.size), Math.floor(p.size));
+  });
+  ctx.globalAlpha = 1;
+  hearts.forEach(h => {
+    ctx.globalAlpha = h.life / 40;
+    drawHeart(h.x, h.y, h.scale);
+  });
+  ctx.globalAlpha = 1;
+
+  // Stage indicator still shows
+  drawStageIndicator();
+
+  // Congratulation text (fade in after frame 750)
+  if (endingFrame > 750) {
+    const alpha = Math.min(1, (endingFrame - 750) / 60);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 40px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillText('Congratulations!', W / 2 + 2, H / 2 - 90 + 2);
+    ctx.fillStyle = '#ffe066';
+    ctx.fillText('Congratulations!', W / 2, H / 2 - 90);
+
+    ctx.font = '18px Courier New';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`FINAL SCORE: ${score}`, W / 2, H / 2 + 80);
+    ctx.fillText('You cleared all stages!', W / 2, H / 2 + 105);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = 1;
+  }
+
+  // Restart button after frame 900
+  if (endingFrame > 900 && !document.getElementById('endingRestart')) {
+    overlay.classList.remove('hidden');
+    overlay.innerHTML = `
+      <div style="margin-top:auto;margin-bottom:30px;">
+        <button class="btn" id="endingRestart">Play Again</button>
+      </div>
+    `;
+    overlay.style.background = 'transparent';
+    document.getElementById('endingRestart').addEventListener('click', () => {
+      stopEndingBGM();
+      overlay.style.background = '';
+      startGame();
+    });
+  }
 }
 
 function gameLoop() {
@@ -1770,12 +2092,19 @@ function gameLoop() {
       pausedBgmState = null;
     }
   }
-  draw();
-  // Stage indicator
-  drawStageIndicator();
-  // Pause/countdown overlays
-  if (gamePaused && gameState === 'playing') drawPauseOverlay();
-  else if (countdownTimer > 0 && gameState === 'playing') drawCountdown();
+  if (gameState === 'ending') {
+    updateEnding();
+    drawEnding();
+  } else {
+    draw();
+    // Stage indicator
+    drawStageIndicator();
+    // Stage transition overlay
+    if (stageTransitionTimer > 0 && gameState === 'playing') drawStageTransition();
+    // Pause/countdown overlays
+    if (gamePaused && gameState === 'playing') drawPauseOverlay();
+    else if (countdownTimer > 0 && gameState === 'playing') drawCountdown();
+  }
   requestAnimationFrame(gameLoop);
 }
 
