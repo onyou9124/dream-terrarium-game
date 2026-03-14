@@ -116,7 +116,7 @@
     <h1>꿈 속의 테라리움</h1>
     <p>클릭 또는 스페이스바를 누르고 있으면 위로!</p>
     <p>토마토를 피하고, 별과 아이템을 모으세요!</p>
-    <p style="color:#ff9999;font-size:13px;">A키를 눌러 고양이로 플레이!</p>
+    <p style="color:#ff9999;font-size:13px;">캐릭터를 터치하거나 A키로 선택!</p>
     <button class="btn" id="startBtn">게임 시작</button>
   </div>
 </div>
@@ -346,6 +346,7 @@ function stopCatBGM() {
 
 // Swapped state tracking (true = cat is player, false = dog is player)
 let swapped = false;
+let menuSelectedChar = 'dog'; // 'dog' or 'cat' — menu selection before game starts
 
 // Ground obstacles (spires/mountains)
 let groundObstacles = [];
@@ -2006,6 +2007,23 @@ function draw() {
     const previewY = H / 2 + Math.sin(frameCount * 0.03) * 15;
     drawCat(W / 2 - 70, previewY + 5, cat.animFrame, cat.isBlinking);
     drawDog(W / 2, previewY, dog.animFrame, dog.isBlinking);
+    // Selection indicator
+    const selX = menuSelectedChar === 'cat' ? W / 2 - 70 + 20 : W / 2 + 20;
+    const selY = menuSelectedChar === 'cat' ? previewY + 5 + 20 : previewY + 20;
+    ctx.save();
+    ctx.strokeStyle = '#ffe066';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#ffe066';
+    ctx.shadowBlur = 10 + Math.sin(frameCount * 0.08) * 5;
+    ctx.beginPath();
+    ctx.arc(selX, selY, 28 + Math.sin(frameCount * 0.06) * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = '10px Courier New';
+    ctx.fillStyle = '#ffe066';
+    ctx.textAlign = 'center';
+    ctx.shadowBlur = 0;
+    ctx.fillText('▼', selX, selY - 32);
+    ctx.restore();
     drawBone(W / 2 + 100, previewY - 10);
     // Show a score star and meat in menu
     drawScoreStar(W / 2 + 140, previewY + 20);
@@ -2593,11 +2611,17 @@ function gameLoop(timestamp) {
 
 function startGame() {
   reset();
+  // Apply menu character selection
+  if (menuSelectedChar === 'cat') {
+    swapped = true;
+    cat.x = dog.x; cat.y = dog.y; cat.vy = dog.vy;
+  }
   gameState = 'playing';
   overlay.classList.add('hidden');
   ensureAudio();
   stopGunBGM(); stopCatBGM();
-  startBGM();
+  if (swapped) startCatBGM();
+  else startBGM();
   // Reset timing accumulator to prevent stale time buildup
   lastFrameTime = 0;
   accumulator = 0;
@@ -2615,6 +2639,10 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     if (gamePaused) resumeGame();
     else pauseGame();
+  }
+  // A: toggle character on menu
+  if (e.code === 'KeyA' && gameState === 'menu') {
+    menuSelectedChar = menuSelectedChar === 'dog' ? 'cat' : 'dog';
   }
   // A: swap who is player character (dog ↔ cat)
   if (e.code === 'KeyA' && gameState === 'playing' && !gamePaused && countdownTimer <= 0) {
@@ -2637,17 +2665,33 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp') isSpaceHeld = false;
 });
+function handleCanvasInput(clientX, clientY) {
+  if (gameState === 'menu') {
+    const rect = canvas.getBoundingClientRect();
+    const cx = (clientX - rect.left) / rect.width * W;
+    const cy = (clientY - rect.top) / rect.height * H;
+    const previewY = H / 2 + Math.sin(frameCount * 0.03) * 15;
+    const catCx = W / 2 - 70 + 20, catCy = previewY + 5 + 20;
+    const dogCx = W / 2 + 20, dogCy = previewY + 20;
+    const catDist = Math.sqrt((cx - catCx) ** 2 + (cy - catCy) ** 2);
+    const dogDist = Math.sqrt((cx - dogCx) ** 2 + (cy - dogCy) ** 2);
+    if (catDist < 50) { menuSelectedChar = 'cat'; return; }
+    if (dogDist < 50) { menuSelectedChar = 'dog'; return; }
+    startGame();
+  } else if (gameState === 'playing') {
+    isSpaceHeld = true;
+  }
+}
 canvas.addEventListener('mousedown', e => {
   e.preventDefault();
-  if (gameState === 'menu') startGame();
-  else if (gameState === 'playing') isSpaceHeld = true;
+  handleCanvasInput(e.clientX, e.clientY);
 });
 canvas.addEventListener('mouseup', () => { isSpaceHeld = false; });
 canvas.addEventListener('mouseleave', () => { isSpaceHeld = false; });
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  if (gameState === 'menu') startGame();
-  else if (gameState === 'playing') isSpaceHeld = true;
+  const t = e.touches[0];
+  handleCanvasInput(t.clientX, t.clientY);
 }, { passive: false });
 canvas.addEventListener('touchend', () => { isSpaceHeld = false; });
 startBtn.addEventListener('click', startGame);
@@ -2673,17 +2717,35 @@ function resizeCanvas() {
   const vh = window.innerHeight;
   const gameRatio = W / H; // 800/500 = 1.6
   const screenRatio = vw / vh;
+  let renderedW;
   if (screenRatio < gameRatio) {
-    // Width limited (mobile portrait)
     container.style.width = vw + 'px';
     container.style.height = (vw / gameRatio) + 'px';
+    renderedW = vw;
   } else {
-    // Height limited
     container.style.height = vh + 'px';
     container.style.width = (vh * gameRatio) + 'px';
+    renderedW = vh * gameRatio;
   }
   canvas.style.width = container.style.width;
   canvas.style.height = container.style.height;
+
+  // Scale UI overlay to match canvas
+  const uiScale = renderedW / W;
+  const ui = document.getElementById('ui');
+  ui.style.transformOrigin = 'top left';
+  ui.style.transform = 'scale(' + uiScale + ')';
+  ui.style.width = W + 'px';
+
+  // Scale overlay for small screens — keep minimum 0.65 so text stays readable
+  const ov = document.getElementById('overlay');
+  const ovScale = Math.max(uiScale, 0.65);
+  if (ovScale < 1) {
+    ov.style.transformOrigin = 'center center';
+    ov.style.transform = 'scale(' + ovScale + ')';
+  } else {
+    ov.style.transform = '';
+  }
 }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
