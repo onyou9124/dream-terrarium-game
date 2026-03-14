@@ -374,7 +374,8 @@ let beamFlashTimer = 0;
 let nightTransition = 0; // 0=day, 1=night
 
 // Meat / fatten
-let fatScale = 1; // 1 = normal, up to ~1.6 when fattened
+let fatScale = 1; // 1 = normal, up to ~2.5 when fattened
+let fatTimer = 0; // frames to stay fat before shrinking
 
 // Tomato counter for gun/meat spawn rate
 let tomatoSpawnCount = 0;
@@ -533,6 +534,7 @@ function spawnScoreStars() {
 }
 
 function updateLivesUI() {
+  if (lives < 0) lives = 0;
   livesContainer.innerHTML = '';
   for (let i = 0; i < lives; i++) {
     const c = document.createElement('canvas');
@@ -570,7 +572,7 @@ function reset() {
   score = 0; lives = 3; invincibleTimer = 0; hitCount = 0;
   frameCount = 0; difficulty = 1; isSpaceHeld = false;
   gunActive = false; gunTimer = 0; nightTransition = 0;
-  fatScale = 1; tomatoSpawnCount = 0; beamFlashTimer = 0;
+  fatScale = 1; fatTimer = 0; tomatoSpawnCount = 0; beamFlashTimer = 0;
   scrollOffset = 0; swapped = false; gameStartFrame = 0;
   gamePaused = false; countdownTimer = 0; pausedBgmState = null; currentStage = 0;
   stageTransitionTimer = 0; endingFrame = -1; endingNarrated = false; endingScrollY = 0; endingAsCat = false;
@@ -599,7 +601,7 @@ function drawDog(x, y, frame, blinking) {
   const bounce = Math.sin(frame * 0.3) * 2;
   const by = oy + bounce;
 
-  if (invincibleTimer > 0 && Math.floor(invincibleTimer / 4) % 2 === 0) {
+  if (invincibleTimer > 0 && fatScale <= 1.05 && Math.floor(invincibleTimer / 4) % 2 === 0) {
     ctx.globalAlpha = 0.4;
   }
 
@@ -1661,9 +1663,10 @@ function update() {
 
     if (invincibleTimer > 0) invincibleTimer--;
 
-    // Fat shrink back to normal
-    if (fatScale > 1) {
-      fatScale -= 0.002;
+    // Fat: hold size for fatTimer, then shrink fast
+    if (fatTimer > 0) { fatTimer--; }
+    else if (fatScale > 1) {
+      fatScale -= 0.015;
       if (fatScale < 1) fatScale = 1;
     }
 
@@ -1687,6 +1690,7 @@ function update() {
       // Speed boost effect: tomatoes and everything move faster
       if (gunTimer <= 0) {
         gunActive = false;
+        invincibleTimer = Math.max(invincibleTimer, 30); // 0.5s invincibility after gun
         stopGunBGM();
         if (swapped) startCatBGM(); else startBGM();
       }
@@ -1724,22 +1728,28 @@ function update() {
     });
     tomatoes = tomatoes.filter(t => t.x > -50);
 
-    // Collision: tomatoes (only if not invincible and not gun active)
-    if (invincibleTimer <= 0 && !gunActive) {
+    // Fat bounce: always active regardless of invincibility
+    if (fatScale > 1.05 && !gunActive) {
       for (const t of tomatoes) {
         const tSize = 18 * t.size;
         const pR = 22 * fatScale;
         if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, t.x - tSize, t.y - tSize, tSize * 2, tSize * 2)) {
-          // Fat mode: bounce tomato away instead of taking damage
-          if (fatScale > 1.1) {
-            const dx = t.x - leader.x, dy = t.y - leader.y;
-            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            t.vx = (dx / dist) * 12;
-            t.vy = (dy / dist) * 8;
-            addParticles(t.x, t.y, '#ff8888', 5);
-            playSound('bone');
-            continue;
-          }
+          const dx = t.x - leader.x, dy = t.y - leader.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          t.vx = (dx / dist) * 12;
+          t.vy = (dy / dist) * 8;
+          addParticles(t.x, t.y, '#ff8888', 5);
+          playSound('bone');
+        }
+      }
+    }
+
+    // Collision: tomatoes (only if not invincible and not gun active)
+    if (invincibleTimer <= 0 && !gunActive && fatScale <= 1.05) {
+      for (const t of tomatoes) {
+        const tSize = 18 * t.size;
+        const pR = 22;
+        if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, t.x - tSize, t.y - tSize, tSize * 2, tSize * 2)) {
           lives--;
           hitCount++;
           updateLivesUI();
@@ -1835,7 +1845,8 @@ function update() {
     for (let i = meatPickups.length - 1; i >= 0; i--) {
       const m = meatPickups[i];
       if (collides(leader.x - 22, leader.y - 22, 44, 44, m.x - 18, m.y - 14, 40, 32)) {
-        fatScale = 1.8;
+        fatScale = 2.5;
+        fatTimer = 180; // 3 seconds fat before shrinking
         invincibleTimer = 180; // 3 seconds invincibility
         score += 100;
         scoreText.textContent = `SCORE: ${score}`;
@@ -1855,7 +1866,7 @@ function update() {
       const ls = lifeStars[i];
       const bob = Math.sin(frameCount * 0.04 + ls.x) * 5;
       if (collides(leader.x - 22, leader.y - 22, 44, 44, ls.x - 20, ls.y + bob - 20, 40, 40)) {
-        lives = Math.min(lives + 1, 5); // max 5 lives
+        lives++;
         updateLivesUI();
         addParticles(ls.x, ls.y, '#ffe066', 15);
         addParticles(ls.x, ls.y, '#fff', 8);
@@ -1868,11 +1879,22 @@ function update() {
     // Update ground obstacles
     groundObstacles.forEach(o => { o.x -= (1.5 + difficulty * 0.3) * speedMul; });
     groundObstacles = groundObstacles.filter(o => o.x + o.w > -20);
-    // Collision: ground obstacles
-    if (invincibleTimer <= 0 && !gunActive) {
+    // Fat bounce: ground obstacles (always active)
+    if (fatScale > 1.05 && !gunActive) {
       for (const o of groundObstacles) {
         const obstTop = H - o.h;
         const pR = 22 * fatScale;
+        if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, o.x, obstTop, o.w, o.h)) {
+          addParticles(o.x, obstTop, '#ff8888', 5);
+          playSound('bone');
+        }
+      }
+    }
+    // Collision: ground obstacles (damage)
+    if (invincibleTimer <= 0 && !gunActive && fatScale <= 1.05) {
+      for (const o of groundObstacles) {
+        const obstTop = H - o.h;
+        const pR = 22;
         if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, o.x, obstTop, o.w, o.h)) {
           lives--;
           hitCount++;
