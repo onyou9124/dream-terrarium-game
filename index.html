@@ -2538,7 +2538,13 @@ function drawEnding() {
   }
 }
 
-function gameLoop() {
+// Fixed timestep game loop for consistent speed across all refresh rates
+let lastFrameTime = 0;
+const FIXED_DT = 1000 / 60; // 16.667ms per tick (60 ticks/sec)
+const SPEED_SCALE = 2.022;   // 1.685 * 1.2 = 2.022x
+let accumulator = 0;
+
+function gameTick() {
   if (!gamePaused && countdownTimer <= 0) {
     update();
   } else if (countdownTimer > 0) {
@@ -2553,16 +2559,32 @@ function gameLoop() {
   }
   if (gameState === 'ending') {
     updateEnding();
+  }
+}
+
+function gameLoop(timestamp) {
+  if (!lastFrameTime) lastFrameTime = timestamp;
+  let elapsed = timestamp - lastFrameTime;
+  lastFrameTime = timestamp;
+
+  // Clamp to prevent spiral of death (e.g. after tab switch)
+  if (elapsed > 200) elapsed = 200;
+
+  accumulator += elapsed * SPEED_SCALE;
+
+  while (accumulator >= FIXED_DT) {
+    gameTick();
+    accumulator -= FIXED_DT;
+  }
+
+  // Draw once per render frame
+  if (gameState === 'ending') {
     drawEnding();
   } else {
     draw();
-    // Stage indicator
     drawStageIndicator();
-    // Speech bubble
     if (speechBubbleTimer > 0 && gameState === 'playing') drawSpeechBubble();
-    // Stage transition overlay
     if (stageTransitionTimer > 0 && gameState === 'playing') drawStageTransition();
-    // Pause/countdown overlays
     if (gamePaused && gameState === 'playing') drawPauseOverlay();
     else if (countdownTimer > 0 && gameState === 'playing') drawCountdown();
   }
@@ -2576,6 +2598,9 @@ function startGame() {
   ensureAudio();
   stopGunBGM(); stopCatBGM();
   startBGM();
+  // Reset timing accumulator to prevent stale time buildup
+  lastFrameTime = 0;
+  accumulator = 0;
 }
 
 // Input
@@ -2669,7 +2694,7 @@ initNightStars();
 initCityBuildings();
 initStageParticles();
 updateLivesUI();
-gameLoop();
+requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
