@@ -90,6 +90,7 @@
     <div id="livesContainer"></div>
     <span id="bestText">BEST: 0</span>
   </div>
+  <button id="pauseBtn" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:25;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.85);border:3px solid #333;font-size:18px;font-weight:bold;color:#333;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 rgba(0,0,0,0.3);font-family:'Courier New',monospace;">||</button>
   <button id="helpBtn">?</button>
   <div id="helpModal">
     <div class="help-content">
@@ -103,7 +104,8 @@
       <div class="item-row"><span class="item-icon">🏔️</span><span>첨탑/산 - 바닥 장애물! 부딪히면 목숨 -1</span></div>
       <hr style="border-color:#ffe066;margin:10px 0">
       <div class="item-row"><span class="item-icon">⌨️</span><span>스페이스/클릭/터치: 위로 날기</span></div>
-      <div class="item-row"><span class="item-icon">🔄</span><span>ESC: 강아지↔고양이 교체 (BGM 변경!)</span></div>
+      <div class="item-row"><span class="item-icon">⏸️</span><span>ESC: 일시정지</span></div>
+      <div class="item-row"><span class="item-icon">🔄</span><span>A키: 강아지↔고양이 교체 (BGM 변경!)</span></div>
       <button class="close-help" onclick="document.getElementById('helpModal').classList.remove('show')">닫기</button>
     </div>
   </div>
@@ -168,29 +170,42 @@ function playNoise(duration, vol, startTime) {
   src.stop(t + duration);
 }
 
-// BGM: Flash-game style looping melody
+// BGM: Stage-dependent looping melody
 function startBGM() {
   if (bgmInterval) return;
   ensureAudio();
-  const melody = [
-    523, 587, 659, 523, 659, 698, 659, 0,
-    523, 587, 659, 784, 698, 659, 587, 0,
-    659, 698, 784, 659, 784, 880, 784, 0,
-    698, 659, 587, 523, 587, 659, 523, 0
+  const melodies = [
+    // Stage 0: Sky - dreamy, gentle
+    [523, 587, 659, 523, 659, 698, 659, 0, 523, 587, 659, 784, 698, 659, 587, 0,
+     659, 698, 784, 659, 784, 880, 784, 0, 698, 659, 587, 523, 587, 659, 523, 0],
+    // Stage 1: Hell - aggressive, minor key
+    [330, 311, 294, 330, 392, 370, 330, 0, 294, 330, 370, 392, 440, 392, 370, 0,
+     330, 294, 262, 294, 330, 370, 330, 0, 440, 392, 370, 330, 294, 330, 262, 0],
+    // Stage 2: Underwater - flowing, mysterious
+    [392, 440, 523, 440, 392, 349, 330, 0, 349, 392, 440, 523, 587, 523, 440, 0,
+     523, 587, 659, 587, 523, 440, 392, 0, 440, 523, 587, 523, 440, 392, 349, 0],
+    // Stage 3: Heaven - bright, angelic
+    [659, 784, 880, 784, 988, 880, 784, 0, 880, 988, 1047, 988, 880, 784, 880, 0,
+     784, 880, 988, 1047, 1175, 1047, 988, 0, 1047, 988, 880, 784, 880, 988, 784, 0]
   ];
+  const tempos = [160, 130, 150, 140]; // progressively different feel
+  const tones = [['square', 'triangle'], ['sawtooth', 'square'], ['sine', 'triangle'], ['sine', 'sine']];
+  const stage = Math.min(currentStage, 3);
+  const melody = melodies[stage];
+  const tempo = tempos[stage];
+  const tone = tones[stage];
   let idx = 0;
   const step = () => {
     if (!audioCtx || gameState !== 'playing') return;
     const freq = melody[idx % melody.length];
     if (freq > 0) {
-      playNote(freq, 0.12, 'square', 0.04);
-      // Harmony
-      playNote(freq * 0.5, 0.12, 'triangle', 0.025);
+      playNote(freq, 0.12, tone[0], 0.04);
+      playNote(freq * 0.5, 0.12, tone[1], 0.025);
     }
     idx++;
   };
   step();
-  bgmInterval = setInterval(step, 160);
+  bgmInterval = setInterval(step, tempo);
 }
 
 function stopBGM() {
@@ -263,34 +278,41 @@ function playSound(type) {
   }
 }
 
-// Cat hip BGM
+// Cat hip BGM - complex hip-hop beat
 let catBgmInterval = null;
 function startCatBGM() {
   if (catBgmInterval) return;
   ensureAudio();
-  // Hip-hop style beat with bass and snare pattern
   const melody = [
-    330, 0, 392, 0, 330, 0, 440, 392,
-    330, 0, 494, 0, 440, 392, 330, 0,
-    262, 0, 330, 0, 392, 0, 330, 262,
-    294, 0, 330, 392, 440, 392, 330, 0
+    330, 0, 392, 440, 330, 0, 494, 392,
+    330, 370, 0, 440, 494, 392, 330, 0,
+    262, 294, 330, 0, 392, 440, 330, 262,
+    294, 0, 370, 392, 440, 494, 440, 0
+  ];
+  const bass = [
+    110, 0, 110, 0, 82, 0, 82, 0,
+    98, 0, 98, 0, 110, 0, 82, 0,
+    87, 0, 87, 0, 98, 0, 98, 0,
+    82, 0, 82, 0, 110, 0, 110, 0
   ];
   let idx = 0;
   const step = () => {
     if (!audioCtx || gameState !== 'playing' || !swapped) return;
     const freq = melody[idx % melody.length];
+    const bf = bass[idx % bass.length];
     if (freq > 0) {
-      playNote(freq, 0.1, 'triangle', 0.05);
-      // Bass line
-      playNote(freq * 0.25, 0.12, 'sawtooth', 0.035);
+      playNote(freq, 0.08, 'triangle', 0.045);
+      playNote(freq * 1.5, 0.05, 'sine', 0.02); // hi overtone
     }
-    // Drum pattern on every other beat
-    if (idx % 4 === 0) playNoise(0.05, 0.07);
-    if (idx % 4 === 2) playNoise(0.03, 0.04);
+    if (bf > 0) playNote(bf, 0.12, 'sawtooth', 0.04);
+    // Kick-snare pattern: kick on 0,4,8,12; snare on 2,6,10,14; hi-hat on odds
+    if (idx % 4 === 0) { playNoise(0.06, 0.09); playNote(55, 0.08, 'sine', 0.06); }
+    if (idx % 4 === 2) playNoise(0.04, 0.06);
+    if (idx % 2 === 1) playNoise(0.02, 0.025);
     idx++;
   };
   step();
-  catBgmInterval = setInterval(step, 140);
+  catBgmInterval = setInterval(step, 110);
 }
 function stopCatBGM() {
   if (catBgmInterval) { clearInterval(catBgmInterval); catBgmInterval = null; }
@@ -362,6 +384,44 @@ let beamParticles = [];
 
 // Track screen scroll offset for stationary stars
 let scrollOffset = 0;
+
+// Pause system
+let gamePaused = false;
+let countdownTimer = 0;
+let pausedBgmState = null;
+
+// Stage system (0=Sky, 1=Hell, 2=Underwater, 3=Heaven)
+let currentStage = 0;
+
+// City buildings for cat mode
+let cityBuildings = [];
+function initCityBuildings() {
+  cityBuildings = [];
+  for (let i = 0; i < 20; i++) {
+    const bw = 30 + Math.random() * 40;
+    const bh = 60 + Math.random() * 120;
+    const wins = [];
+    for (let wy = 10; wy < bh - 15; wy += 20) {
+      for (let wx = 5; wx < bw - 10; wx += 15) {
+        if (Math.random() > 0.3) wins.push({ wx, wy, lit: Math.random() > 0.4 });
+      }
+    }
+    cityBuildings.push({ x: i * 45, w: bw, h: bh, wins });
+  }
+}
+
+// Stage background particles (fire/bubbles/halos)
+let stageParticles = [];
+function initStageParticles() {
+  stageParticles = [];
+  for (let i = 0; i < 30; i++) {
+    stageParticles.push({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.5, vy: -0.5 - Math.random(),
+      size: 2 + Math.random() * 4, phase: Math.random() * Math.PI * 2
+    });
+  }
+}
 
 // Night sky stars (for gun powerup)
 let nightStars = [];
@@ -440,6 +500,7 @@ function reset() {
   gunActive = false; gunTimer = 0; nightTransition = 0;
   fatScale = 1; tomatoSpawnCount = 0; beamFlashTimer = 0;
   scrollOffset = 0; swapped = false; gameStartFrame = 0;
+  gamePaused = false; countdownTimer = 0; pausedBgmState = null; currentStage = 0;
   scoreText.textContent = 'SCORE: 0';
   updateLivesUI();
   spawnScoreStars();
@@ -778,7 +839,7 @@ function drawBeam() {
   const beamX = ldr.x + 30 * fatScale;
   const beamY = ldr.y - 8;
   const beamWidth = W - beamX;
-  const totalH = 18 + Math.sin(frameCount * 0.4) * 3;
+  const totalH = 40 + Math.sin(frameCount * 0.4) * 5;
   const rainbowColors = [
     'rgba(255,0,0,A)', 'rgba(255,127,0,A)', 'rgba(255,255,0,A)',
     'rgba(0,255,0,A)', 'rgba(0,127,255,A)', 'rgba(75,0,130,A)', 'rgba(148,0,211,A)'
@@ -832,17 +893,11 @@ function drawCloud(cloud) {
 
 // ============ BACKGROUND ============
 function drawBackground() {
-  // Day sky
   const grad = ctx.createLinearGradient(0, 0, 0, H);
   const t = (Math.sin(frameCount * 0.005) + 1) / 2;
 
-  if (nightTransition < 0.01) {
-    // Pure day
-    grad.addColorStop(0, lerpColor('#a8d8ea', '#ffd1dc', t * 0.3));
-    grad.addColorStop(0.5, lerpColor('#cce5ff', '#e8d5f5', t * 0.2));
-    grad.addColorStop(1, lerpColor('#f5e6cc', '#d4e6f1', t * 0.4));
-  } else {
-    // Night blend
+  // Gun mode: override to night/space
+  if (nightTransition > 0.01) {
     const n = nightTransition;
     const dayTop = lerpColor('#a8d8ea', '#ffd1dc', t * 0.3);
     const dayMid = lerpColor('#cce5ff', '#e8d5f5', t * 0.2);
@@ -850,12 +905,9 @@ function drawBackground() {
     grad.addColorStop(0, lerpColorRGB(dayTop, '#0a0a2e', n));
     grad.addColorStop(0.5, lerpColorRGB(dayMid, '#141432', n));
     grad.addColorStop(1, lerpColorRGB(dayBot, '#1a1a3e', n));
-  }
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Night stars
-  if (nightTransition > 0.1) {
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // Night stars
     nightStars.forEach(s => {
       const twinkle = Math.sin(frameCount * s.twinkleSpeed + s.phase) * 0.4 + 0.6;
       ctx.globalAlpha = twinkle * nightTransition;
@@ -863,41 +915,200 @@ function drawBackground() {
       ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.size, s.size);
     });
     ctx.globalAlpha = 1;
-
-    // Moon
     if (nightTransition > 0.5) {
       ctx.globalAlpha = nightTransition;
       ctx.fillStyle = '#fffde0';
       const moonX = 680, moonY = 60;
       for (let i = -3; i <= 3; i++) {
         for (let j = -3; j <= 3; j++) {
-          if (i * i + j * j <= 10) {
-            ctx.fillRect(moonX + i * 5, moonY + j * 5, 5, 5);
-          }
+          if (i * i + j * j <= 10) ctx.fillRect(moonX + i * 5, moonY + j * 5, 5, 5);
         }
       }
-      // Moon shadow
       ctx.fillStyle = '#ddd8a0';
       ctx.fillRect(moonX + 5, moonY - 5, 5, 5);
       ctx.fillRect(moonX - 5, moonY + 5, 5, 5);
       ctx.globalAlpha = 1;
     }
+    clouds.filter(c => c.layer === 0).forEach(drawCloud);
+    return;
   }
 
-  // Faint day stars
-  if (nightTransition < 0.5) {
+  // Cat mode city night (overrides stage BG when cat is leader, not gun mode)
+  if (swapped && !gunActive && gameState === 'playing') {
+    drawCityNightBackground();
+    return;
+  }
+
+  // Stage-based backgrounds
+  if (currentStage === 0) {
+    // Sky (original dreamy sky)
+    grad.addColorStop(0, lerpColor('#a8d8ea', '#ffd1dc', t * 0.3));
+    grad.addColorStop(0.5, lerpColor('#cce5ff', '#e8d5f5', t * 0.2));
+    grad.addColorStop(1, lerpColor('#f5e6cc', '#d4e6f1', t * 0.4));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // Faint day stars
     ctx.fillStyle = 'rgba(255,255,200,0.5)';
     for (let i = 0; i < 20; i++) {
       const sx = (i * 47 + frameCount * 0.1) % W;
       const sy = (i * 31) % (H * 0.6);
       const twinkle = Math.sin(frameCount * 0.05 + i) * 0.5 + 0.5;
-      ctx.globalAlpha = twinkle * 0.6 * (1 - nightTransition);
+      ctx.globalAlpha = twinkle * 0.6;
+      ctx.fillRect(Math.floor(sx), Math.floor(sy), 3, 3);
+    }
+    ctx.globalAlpha = 1;
+  } else if (currentStage === 1) {
+    // Hell: dark red/orange gradient, fire particles, lava
+    grad.addColorStop(0, '#1a0000');
+    grad.addColorStop(0.4, '#4a0a00');
+    grad.addColorStop(0.7, '#8b2500');
+    grad.addColorStop(1, '#ff4500');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // Lava at bottom
+    for (let x = 0; x < W; x += 5) {
+      const lh = 15 + Math.sin(frameCount * 0.03 + x * 0.05) * 8;
+      ctx.fillStyle = `rgba(255,${80 + Math.sin(frameCount * 0.05 + x * 0.1) * 40},0,0.8)`;
+      ctx.fillRect(x, H - lh, 5, lh);
+    }
+    // Fire particles
+    stageParticles.forEach(p => {
+      const flicker = Math.sin(frameCount * 0.1 + p.phase) * 0.3 + 0.7;
+      ctx.globalAlpha = flicker;
+      ctx.fillStyle = Math.random() > 0.5 ? '#ff6600' : '#ffaa00';
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    });
+    ctx.globalAlpha = 1;
+  } else if (currentStage === 2) {
+    // Underwater: deep blue, bubbles, light rays, seaweed
+    grad.addColorStop(0, '#001a33');
+    grad.addColorStop(0.3, '#003366');
+    grad.addColorStop(0.7, '#004d80');
+    grad.addColorStop(1, '#006699');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // Light rays from top
+    for (let i = 0; i < 5; i++) {
+      const rx = 100 + i * 160 + Math.sin(frameCount * 0.01 + i) * 30;
+      ctx.fillStyle = 'rgba(100,200,255,0.06)';
+      ctx.beginPath();
+      ctx.moveTo(rx - 20, 0);
+      ctx.lineTo(rx + 20, 0);
+      ctx.lineTo(rx + 60, H);
+      ctx.lineTo(rx - 60, H);
+      ctx.fill();
+    }
+    // Seaweed at bottom
+    for (let i = 0; i < 12; i++) {
+      const sx = i * 70 + 20;
+      const sway = Math.sin(frameCount * 0.02 + i * 1.5) * 10;
+      ctx.fillStyle = '#006633';
+      for (let j = 0; j < 6; j++) {
+        const sw = Math.sin(frameCount * 0.02 + i * 1.5 + j * 0.3) * (j * 2);
+        ctx.fillRect(sx + sw, H - j * 12 - 12, 6, 12);
+      }
+    }
+    // Bubble particles
+    stageParticles.forEach(p => {
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = 'rgba(150,220,255,0.6)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(200,240,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+  } else {
+    // Heaven: bright white/gold, divine light beams, golden clouds, halos
+    grad.addColorStop(0, '#fff8e0');
+    grad.addColorStop(0.3, '#ffe8a0');
+    grad.addColorStop(0.6, '#ffdd70');
+    grad.addColorStop(1, '#fff5cc');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // Divine light beams
+    for (let i = 0; i < 7; i++) {
+      const rx = 60 + i * 120 + Math.sin(frameCount * 0.008 + i * 0.7) * 20;
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.moveTo(rx - 10, 0);
+      ctx.lineTo(rx + 10, 0);
+      ctx.lineTo(rx + 50, H);
+      ctx.lineTo(rx - 50, H);
+      ctx.fill();
+    }
+    // Floating halos
+    stageParticles.forEach((p, i) => {
+      if (i % 3 !== 0) return;
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 8 + Math.sin(frameCount * 0.03 + p.phase) * 2, 3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+    // Golden sparkles
+    ctx.fillStyle = 'rgba(255,215,0,0.6)';
+    for (let i = 0; i < 15; i++) {
+      const sx = (i * 57 + frameCount * 0.2) % W;
+      const sy = (i * 37 + Math.sin(frameCount * 0.03 + i) * 20) % H;
+      const twinkle = Math.sin(frameCount * 0.06 + i) * 0.5 + 0.5;
+      ctx.globalAlpha = twinkle * 0.5;
       ctx.fillRect(Math.floor(sx), Math.floor(sy), 3, 3);
     }
     ctx.globalAlpha = 1;
   }
 
   clouds.filter(c => c.layer === 0).forEach(drawCloud);
+}
+
+// City night background for cat mode
+function drawCityNightBackground() {
+  // Dark blue/purple sky
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0a2e');
+  grad.addColorStop(0.4, '#1a1040');
+  grad.addColorStop(1, '#2a1050');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  // Stars
+  for (let i = 0; i < 40; i++) {
+    const sx = (i * 23 + 10) % W;
+    const sy = (i * 17 + 5) % (H * 0.5);
+    const twinkle = Math.sin(frameCount * 0.04 + i * 1.3) * 0.4 + 0.6;
+    ctx.globalAlpha = twinkle;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+  // Moon
+  ctx.fillStyle = '#fffde0';
+  const moonX = 650, moonY = 50;
+  for (let i = -2; i <= 2; i++) {
+    for (let j = -2; j <= 2; j++) {
+      if (i * i + j * j <= 5) ctx.fillRect(moonX + i * 5, moonY + j * 5, 5, 5);
+    }
+  }
+  // City skyline
+  cityBuildings.forEach((b, idx) => {
+    const bx = (b.x - (scrollOffset * 0.3) % (20 * 45) + 20 * 45) % (20 * 45) - 45;
+    ctx.fillStyle = '#111122';
+    ctx.fillRect(bx, H - b.h, b.w, b.h);
+    // Lit windows
+    b.wins.forEach(w => {
+      const flicker = Math.sin(frameCount * 0.02 + idx + w.wx + w.wy) > -0.3;
+      if (w.lit && flicker) {
+        ctx.fillStyle = 'rgba(255,230,100,0.8)';
+        ctx.fillRect(bx + w.wx, H - b.h + w.wy, 8, 10);
+      }
+    });
+    // Roof edge
+    ctx.fillStyle = '#1a1a33';
+    ctx.fillRect(bx - 2, H - b.h, b.w + 4, 3);
+  });
 }
 
 function drawForeground() {
@@ -1065,6 +1276,24 @@ function update() {
       scoreText.textContent = `SCORE: ${score}`;
     }
 
+    // Stage computation
+    const prevStage = currentStage;
+    currentStage = score < 1000 ? 0 : score < 2000 ? 1 : score < 3000 ? 2 : 3;
+    // Stage changed: restart BGM for new stage melody (if not gun/cat BGM)
+    if (currentStage !== prevStage && !gunActive && !swapped) {
+      stopBGM();
+      startBGM();
+    }
+
+    // Update stage particles
+    stageParticles.forEach(p => {
+      if (currentStage === 1) { p.y += p.vy * -0.3; p.x += Math.sin(frameCount * 0.05 + p.phase) * 0.5; } // fire rises
+      else if (currentStage === 2) { p.y += p.vy * 0.3; p.x += Math.sin(frameCount * 0.02 + p.phase) * 0.3; } // bubbles rise
+      else { p.y += p.vy * 0.15; p.x += Math.sin(frameCount * 0.01 + p.phase) * 0.4; } // halos float
+      if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+      if (p.y > H + 10) { p.y = -10; p.x = Math.random() * W; }
+    });
+
     // Leader/follower based on swap state
     const leader = swapped ? cat : dog;
     const follower = swapped ? dog : cat;
@@ -1113,7 +1342,7 @@ function update() {
       const beamY = leader.y - 8;
       const beamX = leader.x + 30 * fatScale;
       tomatoes = tomatoes.filter(t => {
-        if (t.x > beamX && Math.abs(t.y - beamY) < 35) {
+        if (t.x > beamX && Math.abs(t.y - beamY) < 60) {
           addParticles(t.x, t.y, '#ff5252', 8);
           addParticles(t.x, t.y, '#ff0', 4);
           score += 100;
@@ -1453,7 +1682,102 @@ function draw() {
   }
 }
 
-function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
+// ============ PAUSE SYSTEM ============
+function pauseGame() {
+  if (gameState !== 'playing' || gamePaused || countdownTimer > 0) return;
+  gamePaused = true;
+  if (gunBgmInterval) pausedBgmState = 'gun';
+  else if (catBgmInterval) pausedBgmState = 'cat';
+  else pausedBgmState = 'normal';
+  stopBGM(); stopGunBGM(); stopCatBGM();
+}
+
+function resumeGame() {
+  if (!gamePaused) return;
+  gamePaused = false;
+  countdownTimer = 120; // 3 * 40 frames
+}
+
+function drawPauseOverlay() {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#ffe066';
+  ctx.font = 'bold 48px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('PAUSED', W / 2, H / 2 - 20);
+  ctx.font = '16px Courier New';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('ESC 또는 Resume 클릭', W / 2, H / 2 + 25);
+  ctx.textAlign = 'left';
+}
+
+function drawCountdown() {
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(0, 0, W, H);
+  const num = Math.ceil(countdownTimer / 40);
+  ctx.fillStyle = '#ffe066';
+  ctx.font = 'bold 80px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(num.toString(), W / 2, H / 2);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawStageIndicator() {
+  if (gameState !== 'playing') return;
+  const barX = W - 22;
+  const barH = H - 100;
+  const barY = 50;
+  const stageColors = ['#87CEEB', '#FF4500', '#0077BE', '#FFD700'];
+  const stageNames = ['SKY', 'HELL', 'SEA', 'HEAVEN'];
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(barX - 2, barY - 2, 19, barH + 4);
+  // Fill based on progress within current stage
+  const stageBase = currentStage * 1000;
+  const progress = currentStage >= 3 ? 1 : Math.min(1, Math.max(0, (score - stageBase) / 1000));
+  const fillH = barH * progress;
+  ctx.fillStyle = stageColors[currentStage];
+  ctx.fillRect(barX, barY + barH - fillH, 15, fillH);
+  // Border lines for stages
+  for (let i = 1; i < 4; i++) {
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(barX, barY + barH * (1 - i / 4), 15, 1);
+  }
+  // Stage label (rotated)
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px Courier New';
+  ctx.textAlign = 'center';
+  ctx.save();
+  ctx.translate(barX + 7, barY + barH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(stageNames[currentStage], 0, 4);
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+function gameLoop() {
+  if (!gamePaused && countdownTimer <= 0) {
+    update();
+  } else if (countdownTimer > 0) {
+    countdownTimer--;
+    if (countdownTimer <= 0) {
+      // Resume BGM
+      if (pausedBgmState === 'gun') startGunBGM();
+      else if (pausedBgmState === 'cat') startCatBGM();
+      else startBGM();
+      pausedBgmState = null;
+    }
+  }
+  draw();
+  // Stage indicator
+  drawStageIndicator();
+  // Pause/countdown overlays
+  if (gamePaused && gameState === 'playing') drawPauseOverlay();
+  else if (countdownTimer > 0 && gameState === 'playing') drawCountdown();
+  requestAnimationFrame(gameLoop);
+}
 
 function startGame() {
   reset();
@@ -1471,26 +1795,28 @@ document.addEventListener('keydown', e => {
     if (gameState === 'menu') startGame();
     else isSpaceHeld = true;
   }
-  // ESC: swap who is player character (dog ↔ cat)
+  // ESC: pause
   if (e.code === 'Escape' && gameState === 'playing') {
+    e.preventDefault();
+    if (gamePaused) resumeGame();
+    else pauseGame();
+  }
+  // A: swap who is player character (dog ↔ cat)
+  if (e.code === 'KeyA' && gameState === 'playing' && !gamePaused && countdownTimer <= 0) {
     swapped = !swapped;
-    // Transfer physics state: the new leader takes current leader position
     if (swapped) {
-      // Cat becomes leader: move cat to dog position, dog becomes follower
       cat.x = dog.x; cat.y = dog.y;
       cat.vy = dog.vy;
     } else {
-      // Dog becomes leader: move dog to cat position, cat becomes follower
       dog.x = cat.x; dog.y = cat.y;
       dog.vy = cat.vy || 0;
     }
     addParticles(dog.x, dog.y, '#ffe066', 8);
     addParticles(cat.x, cat.y, '#ff6666', 8);
-    // Switch BGM
     if (gunActive) { /* keep gun BGM */ }
     else if (swapped) { stopBGM(); startCatBGM(); }
     else { stopCatBGM(); startBGM(); }
-    playSound('bone'); // swap sound
+    playSound('bone');
   }
 });
 document.addEventListener('keyup', e => {
@@ -1511,9 +1837,18 @@ canvas.addEventListener('touchstart', e => {
 canvas.addEventListener('touchend', () => { isSpaceHeld = false; });
 startBtn.addEventListener('click', startGame);
 
-// Help button
+// Help button (pauses game when opened)
 document.getElementById('helpBtn').addEventListener('click', () => {
-  document.getElementById('helpModal').classList.toggle('show');
+  const modal = document.getElementById('helpModal');
+  const showing = modal.classList.toggle('show');
+  if (showing && gameState === 'playing' && !gamePaused) pauseGame();
+});
+
+// Pause button
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  if (gameState !== 'playing') return;
+  if (gamePaused) resumeGame();
+  else pauseGame();
 });
 
 // Mobile responsive scaling
@@ -1541,6 +1876,8 @@ resizeCanvas();
 // Init
 initClouds();
 initNightStars();
+initCityBuildings();
+initStageParticles();
 updateLivesUI();
 gameLoop();
 </script>
