@@ -2676,9 +2676,13 @@ function handleCanvasInput(clientX, clientY) {
     const dogCx = W / 2 + 20, dogCy = previewY + 20;
     const catDist = Math.sqrt((cx - catCx) ** 2 + (cy - catCy) ** 2);
     const dogDist = Math.sqrt((cx - dogCx) ** 2 + (cy - dogCy) ** 2);
-    if (catDist < 50) { menuSelectedChar = 'cat'; return; }
-    if (dogDist < 50) { menuSelectedChar = 'dog'; return; }
-    startGame();
+    // Pick the closer character within 80px radius
+    const minDist = Math.min(catDist, dogDist);
+    if (minDist < 80) {
+      menuSelectedChar = catDist < dogDist ? 'cat' : 'dog';
+      return;
+    }
+    // Don't auto-start — use the start button instead
   } else if (gameState === 'playing') {
     isSpaceHeld = true;
   }
