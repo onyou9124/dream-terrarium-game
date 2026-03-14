@@ -296,20 +296,20 @@ function startCatBGM() {
     bass = [110,0,110,0,82,0,82,0, 98,0,98,0,110,0,82,0, 87,0,87,0,98,0,98,0, 82,0,82,0,110,0,110,0];
     tempo = 110; melVol = 0.045; bassVol = 0.04; melWave = 'triangle'; bassWave = 'sawtooth';
   } else if (currentStage === 1) {
-    // Stage 2: Slower, minor key, muted
-    melody = [294,0,0,330,262,0,0,247, 262,0,294,0,247,0,0,220, 262,0,0,294,277,0,247,0, 220,0,0,262,247,0,0,0];
-    bass = [73,0,73,0,65,0,65,0, 69,0,69,0,73,0,65,0, 62,0,62,0,69,0,69,0, 65,0,65,0,73,0,73,0];
-    tempo = 140; melVol = 0.035; bassVol = 0.03; melWave = 'sine'; bassWave = 'triangle';
+    // Stage 2: Sad minor key melody, flowing
+    melody = [330,294,262,0,294,262,247,0, 262,294,330,294,262,0,247,220, 262,0,294,330,294,262,247,0, 220,247,262,0,220,0,196,0];
+    bass = [73,0,65,0,69,0,65,0, 73,0,69,0,65,0,62,0, 65,0,69,0,73,0,65,0, 55,0,58,0,55,0,49,0];
+    tempo = 130; melVol = 0.04; bassVol = 0.03; melWave = 'sine'; bassWave = 'triangle';
   } else if (currentStage === 2) {
-    // Stage 3: Melancholy piano-like
-    melody = [262,0,0,0,247,0,0,220, 0,0,262,0,0,294,0,0, 277,0,0,0,262,0,0,0, 247,0,0,0,220,0,0,0];
-    bass = [65,0,0,0,62,0,0,0, 55,0,0,0,58,0,0,0, 52,0,0,0,55,0,0,0, 49,0,0,0,52,0,0,0];
-    tempo = 180; melVol = 0.04; bassVol = 0.025; melWave = 'sine'; bassWave = 'sine';
+    // Stage 3: Melancholy piano, emotional descending phrases
+    melody = [392,0,370,330,0,294,330,0, 294,0,262,247,0,220,262,0, 330,0,294,0,262,247,220,0, 247,262,247,0,220,0,196,0];
+    bass = [65,0,0,62,0,0,58,0, 55,0,0,52,0,0,55,0, 62,0,0,58,0,0,55,0, 52,0,0,49,0,0,46,0];
+    tempo = 140; melVol = 0.04; bassVol = 0.025; melWave = 'sine'; bassWave = 'sine';
   } else {
-    // Stage 4: Very slow, sparse, heavy/sad
-    melody = [196,0,0,0,0,0,185,0, 0,0,0,0,175,0,0,0, 0,0,0,0,165,0,0,0, 0,0,175,0,0,0,0,0];
-    bass = [49,0,0,0,0,0,0,0, 44,0,0,0,0,0,0,0, 41,0,0,0,0,0,0,0, 37,0,0,0,0,0,0,0];
-    tempo = 220; melVol = 0.035; bassVol = 0.03; melWave = 'sine'; bassWave = 'sine';
+    // Stage 4: Deeply sad, longing melody with emotional weight
+    melody = [330,0,294,262,247,0,220,0, 247,262,294,0,262,247,220,0, 196,0,220,247,262,0,247,220, 196,0,175,0,165,0,0,0];
+    bass = [55,0,0,52,0,0,49,0, 52,0,0,49,0,0,46,0, 44,0,0,46,0,0,49,0, 44,0,0,41,0,0,37,0];
+    tempo = 150; melVol = 0.04; bassVol = 0.03; melWave = 'sine'; bassWave = 'sine';
   }
   let idx = 0;
   const step = () => {
@@ -317,10 +317,12 @@ function startCatBGM() {
     const freq = melody[idx % melody.length];
     const bf = bass[idx % bass.length];
     if (freq > 0) {
-      playNote(freq, currentStage >= 2 ? 0.2 : 0.08, melWave, melVol);
-      if (currentStage < 2) playNote(freq * 1.5, 0.05, 'sine', 0.02);
+      const dur = [0.08, 0.12, 0.15, 0.18][currentStage] || 0.08;
+      playNote(freq, dur, melWave, melVol);
+      if (currentStage === 0) playNote(freq * 1.5, 0.05, 'sine', 0.02);
+      if (currentStage >= 2) playNote(freq * 0.5, dur * 0.8, 'sine', 0.015); // low octave resonance
     }
-    if (bf > 0) playNote(bf, currentStage >= 2 ? 0.25 : 0.12, bassWave, bassVol);
+    if (bf > 0) playNote(bf, [0.12, 0.15, 0.18, 0.2][currentStage] || 0.12, bassWave, bassVol);
     // Drums get sparser with each stage
     if (currentStage === 0) {
       if (idx % 4 === 0) { playNoise(0.06, 0.09); playNote(55, 0.08, 'sine', 0.06); }
@@ -455,6 +457,7 @@ const kitten = {
 // Ending sequence
 let endingFrame = -1;
 let endingNarrated = false;
+let endingAsCat = false;
 let endingBgmInterval = null;
 let endingScrollY = 0;
 
@@ -566,7 +569,7 @@ function reset() {
   fatScale = 1; tomatoSpawnCount = 0; beamFlashTimer = 0;
   scrollOffset = 0; swapped = false; gameStartFrame = 0;
   gamePaused = false; countdownTimer = 0; pausedBgmState = null; currentStage = 0;
-  stageTransitionTimer = 0; endingFrame = -1; endingNarrated = false; endingScrollY = 0;
+  stageTransitionTimer = 0; endingFrame = -1; endingNarrated = false; endingScrollY = 0; endingAsCat = false;
   speechBubbleText = ''; speechBubbleTimer = 0; dogUsedLines = []; catUsedLines = []; pendingSpeechBubble = false; roomBooks = null;
   if (endingBgmInterval) { clearInterval(endingBgmInterval); endingBgmInterval = null; }
   scoreText.textContent = 'SCORE: 0';
@@ -835,11 +838,12 @@ function drawTomato(x, y, size) {
 }
 
 // ============ DRAW SCORE STAR (collectible, stationary in world) ============
-function drawScoreStar(x, y) {
-  const bob = Math.sin(frameCount * 0.06 + x) * 4;
+function drawScoreStar(x, y, phase) {
+  phase = phase || 0;
+  const bob = Math.sin(frameCount * 0.06 + phase) * 4;
   const cy = y + bob;
   const p = 4;
-  const glow = Math.sin(frameCount * 0.08 + x) * 0.3 + 0.7;
+  const glow = Math.sin(frameCount * 0.08 + phase) * 0.15 + 0.85;
   ctx.globalAlpha = glow;
   ctx.save(); ctx.shadowColor = '#ffe066'; ctx.shadowBlur = 12;
   ctx.fillStyle = '#ffe066';
@@ -858,11 +862,12 @@ function drawScoreStar(x, y) {
 }
 
 // ============ DRAW LIFE STAR (big, restores 1 life) ============
-function drawLifeStar(x, y) {
-  const bob = Math.sin(frameCount * 0.04 + x) * 5;
+function drawLifeStar(x, y, phase) {
+  phase = phase || 0;
+  const bob = Math.sin(frameCount * 0.04 + phase) * 5;
   const cy = y + bob;
   const p = 7;
-  const glow = Math.sin(frameCount * 0.06 + x) * 0.2 + 0.8;
+  const glow = Math.sin(frameCount * 0.06 + phase) * 0.1 + 0.9;
   const pulse = 1 + Math.sin(frameCount * 0.08) * 0.08;
   ctx.save();
   ctx.translate(x, cy);
@@ -1721,6 +1726,16 @@ function update() {
         const tSize = 18 * t.size;
         const pR = 22 * fatScale;
         if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, t.x - tSize, t.y - tSize, tSize * 2, tSize * 2)) {
+          // Fat mode: bounce tomato away instead of taking damage
+          if (fatScale > 1.1) {
+            const dx = t.x - leader.x, dy = t.y - leader.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            t.vx = (dx / dist) * 12;
+            t.vy = (dy / dist) * 8;
+            addParticles(t.x, t.y, '#ff8888', 5);
+            playSound('bone');
+            continue;
+          }
           lives--;
           hitCount++;
           updateLivesUI();
@@ -1907,7 +1922,7 @@ function draw() {
     scoreStars.forEach(s => {
       if (s.collected) return;
       const screenX = s.wx - scrollOffset + W;
-      if (screenX > -20 && screenX < W + 20) drawScoreStar(screenX, s.y);
+      if (screenX > -20 && screenX < W + 20) drawScoreStar(screenX, s.y, s.wx);
     });
 
     // Tomatoes
@@ -1923,7 +1938,7 @@ function draw() {
     meatPickups.forEach(m => drawMeat(m.x, m.y));
 
     // Life stars
-    lifeStars.forEach(ls => drawLifeStar(ls.x, ls.y));
+    lifeStars.forEach(ls => drawLifeStar(ls.x, ls.y, ls.y));
 
     // Bone or Kitten
     if (swapped) drawKitten(bone.x, bone.y, Math.floor(frameCount / 10) % 2, kitten.isBlinking);
@@ -2026,6 +2041,7 @@ function resumeGame() {
   if (!gamePaused) return;
   gamePaused = false;
   countdownTimer = 120; // 3 * 40 frames
+  removePauseRestart();
 }
 
 function drawPauseOverlay() {
@@ -2034,11 +2050,30 @@ function drawPauseOverlay() {
   ctx.fillStyle = '#ffe066';
   ctx.font = 'bold 48px Courier New';
   ctx.textAlign = 'center';
-  ctx.fillText('PAUSED', W / 2, H / 2 - 20);
+  ctx.fillText('PAUSED', W / 2, H / 2 - 30);
   ctx.font = '16px Courier New';
   ctx.fillStyle = '#fff';
-  ctx.fillText('ESC 또는 Resume 클릭', W / 2, H / 2 + 25);
+  ctx.fillText('ESC 또는 Resume 클릭', W / 2, H / 2 + 10);
+  // Restart button on pause
+  if (!document.getElementById('pauseRestart')) {
+    const btn = document.createElement('button');
+    btn.id = 'pauseRestart';
+    btn.className = 'btn';
+    btn.textContent = '다시하기';
+    btn.style.cssText = 'position:absolute;left:50%;bottom:30%;transform:translateX(-50%);font-size:14px;padding:8px 20px;z-index:20;';
+    btn.addEventListener('click', () => {
+      btn.remove();
+      gamePaused = false;
+      stopBGM(); stopGunBGM(); stopCatBGM();
+      startGame();
+    });
+    canvas.parentElement.appendChild(btn);
+  }
   ctx.textAlign = 'left';
+}
+function removePauseRestart() {
+  const btn = document.getElementById('pauseRestart');
+  if (btn) btn.remove();
 }
 
 function drawCountdown() {
@@ -2180,6 +2215,20 @@ function getGrade(hits) {
   if (hits <= 5) return { grade: 'B', color: '#66ccff' };
   return { grade: 'C', color: '#aaaaaa' };
 }
+const endingDogLines = {
+  SS: '짱이다!! 대단해!!! 우승!!!!',
+  S: '나이스!! 아주 좋아!!! 이 뼈는 내꺼얌ㅎㅎ',
+  A: '뼈를 얻을 수 있게 해줘서 고마워!!',
+  B: '조금 아쉽지만 잘했어!',
+  C: '엔딩 본 거 축하해!!'
+};
+const endingCatLines = {
+  SS: '이 정도는 해야지.',
+  S: '좀 아쉽군. 그래도 잘했다.',
+  A: '이게 최선인가?',
+  B: '더 분발하도록',
+  C: '겨우 클리어했군 그래'
+};
 
 // ============ ENDING SEQUENCE ============
 function startEnding() {
@@ -2189,10 +2238,10 @@ function startEnding() {
   endingScrollY = 0;
   stopBGM(); stopGunBGM(); stopCatBGM();
   gunActive = false; nightTransition = 0;
-  // Reset to dog
+  endingAsCat = swapped;
+  // Position both characters for ending
   if (swapped) {
-    dog.x = cat.x; dog.y = cat.y; dog.vy = 0;
-    swapped = false;
+    dog.x = cat.x - 50; dog.y = cat.y; dog.vy = 0;
   }
   // Clear threats
   tomatoes = []; groundObstacles = [];
@@ -2233,12 +2282,18 @@ function updateEnding() {
 
   // Phase 1 (0-120): Move characters to center
   if (endingFrame < 120) {
-    const targetX = W / 2 - 20;
     const targetY = H / 2;
-    dog.x += (targetX - dog.x) * 0.04;
-    dog.y += (targetY - dog.y) * 0.04;
-    cat.x += (targetX - 70 - cat.x) * 0.04;
-    cat.y += (targetY + 5 - cat.y) * 0.04;
+    if (endingAsCat) {
+      cat.x += (W / 2 - 20 - cat.x) * 0.04;
+      cat.y += (targetY - cat.y) * 0.04;
+      dog.x += (W / 2 - 90 - dog.x) * 0.04;
+      dog.y += (targetY + 5 - dog.y) * 0.04;
+    } else {
+      dog.x += (W / 2 - 20 - dog.x) * 0.04;
+      dog.y += (targetY - dog.y) * 0.04;
+      cat.x += (W / 2 - 90 - cat.x) * 0.04;
+      cat.y += (targetY + 5 - cat.y) * 0.04;
+    }
     dog.vy = 0;
     bone.x += (W / 2 + 50 - bone.x) * 0.04;
     bone.y += (targetY - 10 - bone.y) * 0.04;
@@ -2268,10 +2323,17 @@ function updateEnding() {
   // Phase 4 (600+): Dance, narration, congrats
   else {
     const dance = Math.sin(endingFrame * 0.06) * 12;
-    dog.x = W / 2 - 20 + dance;
-    dog.y = H / 2 - 30 + Math.sin(endingFrame * 0.1) * 5;
-    cat.x = W / 2 - 90 - dance;
-    cat.y = H / 2 - 25 + Math.sin(endingFrame * 0.1 + 1) * 5;
+    if (endingAsCat) {
+      cat.x = W / 2 - 20 + dance;
+      cat.y = H / 2 - 30 + Math.sin(endingFrame * 0.1) * 5;
+      dog.x = W / 2 - 90 - dance;
+      dog.y = H / 2 - 25 + Math.sin(endingFrame * 0.1 + 1) * 5;
+    } else {
+      dog.x = W / 2 - 20 + dance;
+      dog.y = H / 2 - 30 + Math.sin(endingFrame * 0.1) * 5;
+      cat.x = W / 2 - 90 - dance;
+      cat.y = H / 2 - 25 + Math.sin(endingFrame * 0.1 + 1) * 5;
+    }
     bone.y = H / 2 - 60 + Math.sin(endingFrame * 0.05) * 8;
     if (endingFrame % 25 === 0) {
       addParticles(dog.x, dog.y - 20, '#ffe066', 3);
@@ -2281,9 +2343,10 @@ function updateEnding() {
     if (endingFrame === 650 && !endingNarrated) {
       endingNarrated = true;
       try {
-        const utter = new SpeechSynthesisUtterance(
-          'Congratulations. You have finally obtained this magnificent and wonderful bone. You are magnificent.'
-        );
+        const narrationText = endingAsCat
+          ? 'Congratulations. You have finally found your little kitten. Together, you are unstoppable.'
+          : 'Congratulations. You have finally obtained this magnificent and wonderful bone. You are magnificent.';
+        const utter = new SpeechSynthesisUtterance(narrationText);
         utter.lang = 'en-US';
         utter.rate = 0.78;
         utter.pitch = 0.5; // deep male voice
@@ -2368,12 +2431,17 @@ function drawEnding() {
   }
 
   // Bone or Kitten
-  if (swapped) drawKitten(bone.x, bone.y, Math.floor(frameCount / 10) % 2, kitten.isBlinking);
+  if (endingAsCat) drawKitten(bone.x, bone.y, Math.floor(frameCount / 10) % 2, kitten.isBlinking);
   else drawBone(bone.x, bone.y);
 
-  // Characters
-  drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
-  drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+  // Characters (leader in front)
+  if (endingAsCat) {
+    drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+    drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
+  } else {
+    drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
+    drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+  }
 
   // Particles & hearts
   particles.forEach(p => {
@@ -2426,6 +2494,31 @@ function drawEnding() {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = 1;
+
+    // Ending speech bubble above leader
+    if (endingFrame > 800) {
+      const bubbleAlpha = Math.min(1, (endingFrame - 800) / 40);
+      const lines = endingAsCat ? endingCatLines : endingDogLines;
+      const bubbleText = lines[grade.grade];
+      const ldr = endingAsCat ? cat : dog;
+      ctx.globalAlpha = bubbleAlpha;
+      ctx.font = 'bold 12px Courier New';
+      const tw = ctx.measureText(bubbleText).width;
+      const bw = tw + 16, bh = 26;
+      const bx = ldr.x + 15 - bw / 2;
+      const by = ldr.y - 55;
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.moveTo(ldr.x + 8, by + bh); ctx.lineTo(ldr.x + 22, by + bh); ctx.lineTo(ldr.x + 15, by + bh + 8); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#333';
+      ctx.beginPath(); ctx.moveTo(ldr.x + 8, by + bh); ctx.lineTo(ldr.x + 15, by + bh + 8); ctx.lineTo(ldr.x + 22, by + bh); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillRect(ldr.x + 9, by + bh - 1, 12, 3);
+      ctx.fillStyle = '#333'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(bubbleText, bx + bw / 2, by + bh / 2);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.globalAlpha = 1;
+    }
   }
 
   // Restart button after frame 900
@@ -2433,7 +2526,7 @@ function drawEnding() {
     overlay.classList.remove('hidden');
     overlay.innerHTML = `
       <div style="margin-top:auto;margin-bottom:30px;">
-        <button class="btn" id="endingRestart">Play Again</button>
+        <button class="btn" id="endingRestart">다시하기</button>
       </div>
     `;
     overlay.style.background = 'transparent';
