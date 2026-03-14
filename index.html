@@ -113,11 +113,12 @@
       <button class="close-help" onclick="document.getElementById('helpModal').classList.remove('show')">닫기</button>
     </div>
   </div>
+  <button id="swapBtn" style="position:absolute;bottom:12px;left:12px;z-index:25;padding:8px 14px;font-size:14px;font-family:'Courier New',monospace;background:#ffe066;border:3px solid #000;border-radius:8px;cursor:pointer;box-shadow:2px 2px 0 #000;pointer-events:all;display:none;">🐶↔🐱</button>
   <div id="overlay">
     <h1>꿈 속의 테라리움</h1>
     <p>클릭 또는 스페이스바를 누르고 있으면 위로!</p>
     <p>토마토를 피하고, 별과 아이템을 모으세요!</p>
-    <p style="color:#ff9999;font-size:13px;">캐릭터를 터치하거나 A키로 선택!</p>
+    <p style="color:#ff9999;font-size:13px;">아래 버튼 또는 A키로 캐릭터 변경!</p>
     <button class="btn" id="startBtn">게임 시작</button>
   </div>
 </div>
@@ -127,6 +128,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('startBtn');
+const swapBtn = document.getElementById('swapBtn');
 const scoreText = document.getElementById('scoreText');
 const bestText = document.getElementById('bestText');
 const livesContainer = document.getElementById('livesContainer');
@@ -2700,6 +2702,30 @@ canvas.addEventListener('touchstart', e => {
 }, { passive: false });
 canvas.addEventListener('touchend', () => { isSpaceHeld = false; });
 startBtn.addEventListener('click', startGame);
+
+// Swap character button (mobile-friendly)
+swapBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (gameState === 'menu') {
+    menuSelectedChar = menuSelectedChar === 'dog' ? 'cat' : 'dog';
+  } else if (gameState === 'playing' && !gamePaused && countdownTimer <= 0) {
+    // Same as A key during gameplay
+    swapped = !swapped;
+    if (swapped) { cat.x = dog.x; cat.y = dog.y; cat.vy = dog.vy; }
+    else { dog.x = cat.x; dog.y = cat.y; dog.vy = cat.vy || 0; }
+    addParticles(dog.x, dog.y, '#ffe066', 8);
+    addParticles(cat.x, cat.y, '#ff6666', 8);
+    if (gunActive) { /* keep gun BGM */ }
+    else if (swapped) { stopBGM(); startCatBGM(); }
+    else { stopCatBGM(); startBGM(); }
+    playSound('bone');
+  }
+});
+// Show swap button on touch devices
+function updateSwapBtnVisibility() {
+  swapBtn.style.display = ('ontouchstart' in window) ? 'block' : 'none';
+}
+updateSwapBtnVisibility();
 
 // Help button (pauses game when opened)
 document.getElementById('helpBtn').addEventListener('click', () => {
