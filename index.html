@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>꿈 속의 테라리움</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -15,11 +15,12 @@
     font-family: 'Courier New', monospace;
     overflow: hidden;
   }
-  #gameContainer { position: relative; image-rendering: pixelated; }
+  #gameContainer { position: relative; image-rendering: pixelated; max-width: 100vw; max-height: 100vh; }
   canvas {
     display: block; image-rendering: pixelated;
     border: 4px solid #fff; border-radius: 8px;
     box-shadow: 0 0 30px rgba(255,255,200,0.3);
+    max-width: 100vw; max-height: 100vh; width: auto; height: auto;
   }
   #ui {
     position: absolute; top: 10px; left: 14px; right: 14px;
@@ -49,6 +50,36 @@
   }
   #overlay .btn:hover { transform: scale(1.05); }
   #overlay .btn:active { transform: scale(0.95); box-shadow: 1px 1px 0 #000; }
+  #helpBtn {
+    position: absolute; top: 10px; right: 10px; z-index: 25;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.85); border: 3px solid #333;
+    font-size: 20px; font-weight: bold; color: #333;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.3); font-family: 'Courier New', monospace;
+  }
+  #helpBtn:hover { background: #ffe066; }
+  #helpModal {
+    position: absolute; inset: 0; z-index: 30; display: none;
+    background: rgba(0,0,0,0.8); border-radius: 6px;
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: 20px; overflow-y: auto;
+  }
+  #helpModal.show { display: flex; }
+  #helpModal .help-content {
+    background: rgba(30,30,60,0.95); border: 3px solid #ffe066;
+    border-radius: 10px; padding: 20px 24px; max-width: 500px; width: 90%;
+    color: #fff; font-family: 'Courier New', monospace; font-size: 13px;
+    line-height: 1.6; max-height: 80vh; overflow-y: auto;
+  }
+  #helpModal h3 { color: #ffe066; font-size: 18px; margin-bottom: 12px; text-align: center; }
+  #helpModal .item-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  #helpModal .item-icon { font-size: 20px; min-width: 30px; text-align: center; }
+  #helpModal .close-help {
+    margin-top: 14px; padding: 8px 24px; background: #ffe066;
+    border: 2px solid #000; border-radius: 6px; cursor: pointer;
+    font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold;
+  }
 </style>
 </head>
 <body>
@@ -58,6 +89,23 @@
     <span id="scoreText">SCORE: 0</span>
     <div id="livesContainer"></div>
     <span id="bestText">BEST: 0</span>
+  </div>
+  <button id="helpBtn">?</button>
+  <div id="helpModal">
+    <div class="help-content">
+      <h3>아이템 설명서</h3>
+      <div class="item-row"><span class="item-icon">🍖</span><span>고기 - 몸이 커지고 3초간 무적! (+100점)</span></div>
+      <div class="item-row"><span class="item-icon">🔫</span><span>권총 - 무지개 빔 발사! 토마토를 부수면 +100점</span></div>
+      <div class="item-row"><span class="item-icon">⭐</span><span>점수별 - 제자리에 떠 있는 별 (+5점)</span></div>
+      <div class="item-row"><span class="item-icon">🌟</span><span>생명별 - 큰 별, 목숨 +1 (최대 5개)</span></div>
+      <div class="item-row"><span class="item-icon">🦴</span><span>뼈다귀 - 떠다니는 보너스 (+5점)</span></div>
+      <div class="item-row"><span class="item-icon">🍅</span><span>토마토 - 장애물! 부딪히면 목숨 -1</span></div>
+      <div class="item-row"><span class="item-icon">🏔️</span><span>첨탑/산 - 바닥 장애물! 부딪히면 목숨 -1</span></div>
+      <hr style="border-color:#ffe066;margin:10px 0">
+      <div class="item-row"><span class="item-icon">⌨️</span><span>스페이스/클릭/터치: 위로 날기</span></div>
+      <div class="item-row"><span class="item-icon">🔄</span><span>ESC: 강아지↔고양이 교체 (BGM 변경!)</span></div>
+      <button class="close-help" onclick="document.getElementById('helpModal').classList.remove('show')">닫기</button>
+    </div>
   </div>
   <div id="overlay">
     <h1>꿈 속의 테라리움</h1>
@@ -215,8 +263,47 @@ function playSound(type) {
   }
 }
 
-// Swapped state tracking
+// Cat hip BGM
+let catBgmInterval = null;
+function startCatBGM() {
+  if (catBgmInterval) return;
+  ensureAudio();
+  // Hip-hop style beat with bass and snare pattern
+  const melody = [
+    330, 0, 392, 0, 330, 0, 440, 392,
+    330, 0, 494, 0, 440, 392, 330, 0,
+    262, 0, 330, 0, 392, 0, 330, 262,
+    294, 0, 330, 392, 440, 392, 330, 0
+  ];
+  let idx = 0;
+  const step = () => {
+    if (!audioCtx || gameState !== 'playing' || !swapped) return;
+    const freq = melody[idx % melody.length];
+    if (freq > 0) {
+      playNote(freq, 0.1, 'triangle', 0.05);
+      // Bass line
+      playNote(freq * 0.25, 0.12, 'sawtooth', 0.035);
+    }
+    // Drum pattern on every other beat
+    if (idx % 4 === 0) playNoise(0.05, 0.07);
+    if (idx % 4 === 2) playNoise(0.03, 0.04);
+    idx++;
+  };
+  step();
+  catBgmInterval = setInterval(step, 140);
+}
+function stopCatBGM() {
+  if (catBgmInterval) { clearInterval(catBgmInterval); catBgmInterval = null; }
+}
+
+// Swapped state tracking (true = cat is player, false = dog is player)
 let swapped = false;
+
+// Ground obstacles (spires/mountains)
+let groundObstacles = [];
+
+// Game elapsed time for progressive speed
+let gameStartFrame = 0;
 
 let gameState = 'menu';
 let score = 0;
@@ -250,9 +337,11 @@ const dog = {
   blinkDuration: 8, blinkInterval: 120 + Math.random() * 120
 };
 
-// Cat
+// Cat (also has physics for when it becomes leader)
 const cat = {
-  x: 70, y: H / 2,
+  x: 70, y: H / 2, vy: 0,
+  floatPower: -0.35, gravity: 0.12,
+  maxFallSpeed: 2.5, maxRiseSpeed: -3,
   animFrame: 0, animTimer: 0,
   blinkTimer: 0, isBlinking: false,
   blinkDuration: 8, blinkInterval: 100 + Math.random() * 100
@@ -345,11 +434,12 @@ function reset() {
   bone.x = W - 100; bone.y = H / 2; bone.bobOffset = 0;
   tomatoes = []; particles = []; hearts = [];
   scoreStars = []; gunPickups = []; meatPickups = []; lifeStars = []; beamParticles = [];
+  groundObstacles = [];
   score = 0; lives = 3; invincibleTimer = 0;
   frameCount = 0; difficulty = 1; isSpaceHeld = false;
   gunActive = false; gunTimer = 0; nightTransition = 0;
   fatScale = 1; tomatoSpawnCount = 0; beamFlashTimer = 0;
-  scrollOffset = 0;
+  scrollOffset = 0; swapped = false; gameStartFrame = 0;
   scoreText.textContent = 'SCORE: 0';
   updateLivesUI();
   spawnScoreStars();
@@ -684,8 +774,9 @@ function drawMeat(x, y) {
 // ============ DRAW RAINBOW BEAM ============
 function drawBeam() {
   if (!gunActive) return;
-  const beamX = dog.x + 30 * fatScale;
-  const beamY = dog.y - 8;
+  const ldr = swapped ? cat : dog;
+  const beamX = ldr.x + 30 * fatScale;
+  const beamY = ldr.y - 8;
   const beamWidth = W - beamX;
   const totalH = 18 + Math.sin(frameCount * 0.4) * 3;
   const rainbowColors = [
@@ -813,6 +904,58 @@ function drawForeground() {
   clouds.filter(c => c.layer === 1).forEach(drawCloud);
 }
 
+function drawGroundObstacle(o) {
+  const px = 5;
+  const baseY = H;
+  if (o.type === 'spire') {
+    // Pointed spire / tower
+    const cx = o.x + o.w / 2;
+    ctx.fillStyle = '#556677';
+    // Main body
+    ctx.fillRect(o.x + 4, baseY - o.h + 20, o.w - 8, o.h - 20);
+    // Tip
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(cx - (4 - i) * 3, baseY - o.h + i * 5, (4 - i) * 6, 5);
+    }
+    // Point
+    ctx.fillStyle = '#778899';
+    ctx.fillRect(cx - 2, baseY - o.h - 5, 4, 8);
+    // Window details
+    ctx.fillStyle = '#334455';
+    for (let i = 0; i < Math.floor(o.h / 25); i++) {
+      ctx.fillRect(cx - 3, baseY - o.h + 30 + i * 22, 6, 8);
+    }
+    // Highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(o.x + 5, baseY - o.h + 20, 3, o.h - 20);
+  } else {
+    // Mountain
+    ctx.fillStyle = '#667766';
+    const cx = o.x + o.w / 2;
+    // Triangle-ish mountain with pixel blocks
+    for (let row = 0; row < o.h; row += px) {
+      const ratio = row / o.h;
+      const rowW = o.w * ratio;
+      ctx.fillRect(cx - rowW / 2, baseY - o.h + row, rowW, px);
+    }
+    // Snow cap
+    ctx.fillStyle = '#eef';
+    const capH = o.h * 0.25;
+    for (let row = 0; row < capH; row += px) {
+      const ratio = row / o.h;
+      const rowW = o.w * ratio;
+      ctx.fillRect(cx - rowW / 2, baseY - o.h + row, rowW, px);
+    }
+    // Shadow side
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    for (let row = capH; row < o.h; row += px) {
+      const ratio = row / o.h;
+      const rowW = o.w * ratio;
+      ctx.fillRect(cx, baseY - o.h + row, rowW / 2, px);
+    }
+  }
+}
+
 function lerpColor(a, b, t) {
   const ah = parseInt(a.slice(1), 16); const bh = parseInt(b.slice(1), 16);
   const ar = ah >> 16, ag = (ah >> 8) & 0xff, ab2 = ah & 0xff;
@@ -860,7 +1003,7 @@ function drawHeart(x, y, scale) {
 
 function spawnTomato() {
   tomatoSpawnCount++;
-  const speed = 2.5 + difficulty * 0.3;
+  const speed = 1.5 + difficulty * 0.5; // starts slow, gets faster every 20s
   const y = 50 + Math.random() * (H - 100);
   tomatoes.push({
     x: W + 30, y, vx: -(speed + Math.random()),
@@ -911,7 +1054,10 @@ function update() {
   if (cat.isBlinking && cat.blinkTimer >= cat.blinkDuration) { cat.isBlinking = false; cat.blinkTimer = 0; cat.blinkInterval = 100 + Math.random() * 100; }
 
   if (gameState === 'playing') {
-    difficulty = 1 + score * 0.002;
+    gameStartFrame++;
+    // Progressive difficulty: speed increases every 20 seconds (1200 frames)
+    const timePhase = Math.floor(gameStartFrame / 1200);
+    difficulty = 1 + timePhase * 0.4;
 
     // Score timer: +10 every second (60 frames)
     if (frameCount % 60 === 0) {
@@ -919,26 +1065,36 @@ function update() {
       scoreText.textContent = `SCORE: ${score}`;
     }
 
-    // Dog physics
-    if (isSpaceHeld) {
-      dog.vy += dog.floatPower;
-      if (frameCount % 5 === 0) addParticles(dog.x - 15, dog.y + 15, '#fff', 1);
-    } else {
-      dog.vy += dog.gravity;
-    }
-    if (dog.vy < dog.maxRiseSpeed) dog.vy = dog.maxRiseSpeed;
-    if (dog.vy > dog.maxFallSpeed) dog.vy = dog.maxFallSpeed;
-    dog.y += dog.vy;
-    dog.animTimer++;
-    if (dog.animTimer > 8) { dog.animFrame++; dog.animTimer = 0; }
-    if (dog.y < 30) { dog.y = 30; dog.vy = 0; }
-    if (dog.y > H - 30) { dog.y = H - 30; dog.vy = 0; }
+    // Leader/follower based on swap state
+    const leader = swapped ? cat : dog;
+    const follower = swapped ? dog : cat;
 
-    // Cat follows
-    cat.x += ((dog.x - 70) - cat.x) * 0.06;
-    cat.y += ((dog.y + 5) - cat.y) * 0.06;
-    cat.animTimer++;
-    if (cat.animTimer > 8) { cat.animFrame++; cat.animTimer = 0; }
+    // Leader physics
+    if (!leader.vy) leader.vy = 0;
+    if (isSpaceHeld) {
+      leader.vy += (leader.floatPower || dog.floatPower);
+      if (frameCount % 5 === 0) addParticles(leader.x - 15, leader.y + 15, '#fff', 1);
+    } else {
+      leader.vy += (leader.gravity || dog.gravity);
+    }
+    const maxRise = leader.maxRiseSpeed || dog.maxRiseSpeed;
+    const maxFall = leader.maxFallSpeed || dog.maxFallSpeed;
+    if (leader.vy < maxRise) leader.vy = maxRise;
+    if (leader.vy > maxFall) leader.vy = maxFall;
+    leader.y += leader.vy;
+    leader.animTimer++;
+    if (leader.animTimer > 8) { leader.animFrame++; leader.animTimer = 0; }
+    if (leader.y < 30) { leader.y = 30; leader.vy = 0; }
+    if (leader.y > H - 30) { leader.y = H - 30; leader.vy = 0; }
+
+    // Keep leader at fixed x
+    leader.x = 140;
+
+    // Follower follows leader
+    follower.x += ((leader.x - 70) - follower.x) * 0.06;
+    follower.y += ((leader.y + 5) - follower.y) * 0.06;
+    follower.animTimer++;
+    if (follower.animTimer > 8) { follower.animFrame++; follower.animTimer = 0; }
 
     if (invincibleTimer > 0) invincibleTimer--;
 
@@ -954,13 +1110,13 @@ function update() {
       // Night transition in
       if (nightTransition < 1) nightTransition = Math.min(1, nightTransition + 0.05);
       // Rainbow beam destroys tomatoes (wider hitbox for rainbow)
-      const beamY = dog.y - 8;
-      const beamX = dog.x + 30 * fatScale;
+      const beamY = leader.y - 8;
+      const beamX = leader.x + 30 * fatScale;
       tomatoes = tomatoes.filter(t => {
         if (t.x > beamX && Math.abs(t.y - beamY) < 35) {
           addParticles(t.x, t.y, '#ff5252', 8);
           addParticles(t.x, t.y, '#ff0', 4);
-          score += 2;
+          score += 100;
           return false;
         }
         return true;
@@ -969,7 +1125,7 @@ function update() {
       if (gunTimer <= 0) {
         gunActive = false;
         stopGunBGM();
-        startBGM();
+        if (swapped) startCatBGM(); else startBGM();
       }
     } else {
       // Night transition out
@@ -981,9 +1137,17 @@ function update() {
     bone.y = H / 2 + Math.sin(bone.bobOffset) * 80;
     bone.x = W - 100 + Math.sin(bone.bobOffset * 0.7) * 40;
 
-    // Spawn tomatoes
-    const baseRate = gunActive ? 20 : Math.max(35, 75 - difficulty * 5);
+    // Spawn tomatoes (slower at start, faster over time)
+    const baseRate = gunActive ? 20 : Math.max(30, 80 - difficulty * 8);
     if (frameCount % Math.floor(baseRate) === 0) spawnTomato();
+
+    // Spawn ground obstacles periodically
+    if (gameStartFrame % Math.max(180, 400 - timePhase * 30) === 0) {
+      const obstType = Math.random() > 0.5 ? 'spire' : 'mountain';
+      const obstH = obstType === 'spire' ? 80 + Math.random() * 60 : 50 + Math.random() * 40;
+      const obstW = obstType === 'spire' ? 30 + Math.random() * 15 : 60 + Math.random() * 40;
+      groundObstacles.push({ x: W + 50, w: obstW, h: obstH, type: obstType });
+    }
 
     // Update tomatoes
     const speedMul = gunActive ? 1.8 : 1;
@@ -999,16 +1163,16 @@ function update() {
     if (invincibleTimer <= 0 && !gunActive) {
       for (const t of tomatoes) {
         const tSize = 18 * t.size;
-        const dogR = 22 * fatScale;
-        if (collides(dog.x - dogR, dog.y - dogR, dogR * 2, dogR * 2, t.x - tSize, t.y - tSize, tSize * 2, tSize * 2)) {
+        const pR = 22 * fatScale;
+        if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, t.x - tSize, t.y - tSize, tSize * 2, tSize * 2)) {
           lives--;
           updateLivesUI();
-          addParticles(dog.x, dog.y, '#ff5252', 15);
+          addParticles(leader.x, leader.y, '#ff5252', 15);
           playSound('tomato');
           if (lives <= 0) {
             gameState = 'gameover';
-            addParticles(dog.x, dog.y, '#f0b040', 15);
-            stopBGM(); stopGunBGM();
+            addParticles(leader.x, leader.y, '#f0b040', 15);
+            stopBGM(); stopGunBGM(); stopCatBGM();
             if (score > bestScore) bestScore = score;
             bestText.textContent = `BEST: ${bestScore}`;
             overlay.classList.remove('hidden');
@@ -1037,7 +1201,7 @@ function update() {
       if (s.collected) return;
       const screenX = s.wx - scrollOffset + W; // offset so they appear on screen
       const bob = Math.sin(frameCount * 0.06 + s.wx) * 4;
-      if (collides(dog.x - 20, dog.y - 20, 40, 40, screenX - 10, s.y + bob - 10, 20, 20)) {
+      if (collides(leader.x - 20, leader.y - 20, 40, 40, screenX - 10, s.y + bob - 10, 20, 20)) {
         s.collected = true;
         score += 5;
         scoreText.textContent = `SCORE: ${score}`;
@@ -1060,7 +1224,7 @@ function update() {
     }
 
     // Collision: bone (just gives +5 now)
-    if (collides(dog.x - 22, dog.y - 22, 44, 44, bone.x - 18, bone.y - 10, 36, 20)) {
+    if (collides(leader.x - 22, leader.y - 22, 44, 44, bone.x - 18, bone.y - 10, 36, 20)) {
       score += 5;
       scoreText.textContent = `SCORE: ${score}`;
       addHeart(bone.x, bone.y - 25);
@@ -1077,12 +1241,12 @@ function update() {
     // Collision: gun
     for (let i = gunPickups.length - 1; i >= 0; i--) {
       const g = gunPickups[i];
-      if (collides(dog.x - 22, dog.y - 22, 44, 44, g.x - 15, g.y - 12, 30, 24)) {
+      if (collides(leader.x - 22, leader.y - 22, 44, 44, g.x - 15, g.y - 12, 30, 24)) {
         gunActive = true;
         gunTimer = GUN_DURATION;
         addParticles(g.x, g.y, '#0ff', 15);
         playSound('gun');
-        stopBGM();
+        stopBGM(); stopCatBGM();
         startGunBGM();
         gunPickups.splice(i, 1);
       }
@@ -1094,7 +1258,7 @@ function update() {
     // Collision: meat (does NOT cancel gun state)
     for (let i = meatPickups.length - 1; i >= 0; i--) {
       const m = meatPickups[i];
-      if (collides(dog.x - 22, dog.y - 22, 44, 44, m.x - 18, m.y - 14, 40, 32)) {
+      if (collides(leader.x - 22, leader.y - 22, 44, 44, m.x - 18, m.y - 14, 40, 32)) {
         fatScale = 1.8;
         invincibleTimer = 180; // 3 seconds invincibility
         score += 100;
@@ -1114,7 +1278,7 @@ function update() {
     for (let i = lifeStars.length - 1; i >= 0; i--) {
       const ls = lifeStars[i];
       const bob = Math.sin(frameCount * 0.04 + ls.x) * 5;
-      if (collides(dog.x - 22, dog.y - 22, 44, 44, ls.x - 20, ls.y + bob - 20, 40, 40)) {
+      if (collides(leader.x - 22, leader.y - 22, 44, 44, ls.x - 20, ls.y + bob - 20, 40, 40)) {
         lives = Math.min(lives + 1, 5); // max 5 lives
         updateLivesUI();
         addParticles(ls.x, ls.y, '#ffe066', 15);
@@ -1122,6 +1286,42 @@ function update() {
         addHeart(ls.x, ls.y - 25);
         playSound('life');
         lifeStars.splice(i, 1);
+      }
+    }
+
+    // Update ground obstacles
+    groundObstacles.forEach(o => { o.x -= (1.5 + difficulty * 0.3) * speedMul; });
+    groundObstacles = groundObstacles.filter(o => o.x + o.w > -20);
+    // Collision: ground obstacles
+    if (invincibleTimer <= 0 && !gunActive) {
+      for (const o of groundObstacles) {
+        const obstTop = H - o.h;
+        const pR = 22 * fatScale;
+        if (collides(leader.x - pR, leader.y - pR, pR * 2, pR * 2, o.x, obstTop, o.w, o.h)) {
+          lives--;
+          updateLivesUI();
+          addParticles(leader.x, leader.y, '#888', 12);
+          playSound('tomato');
+          if (lives <= 0) {
+            gameState = 'gameover';
+            stopBGM(); stopGunBGM(); stopCatBGM();
+            if (score > bestScore) bestScore = score;
+            bestText.textContent = `BEST: ${bestScore}`;
+            overlay.classList.remove('hidden');
+            overlay.innerHTML = `
+              <h2>게임 오버!</h2>
+              <div class="score-display">SCORE: ${score}</div>
+              <div class="score-display">BEST: ${bestScore}</div>
+              <p>장애물에 부딪혔어요!</p>
+              <button class="btn" id="retryBtn">다시 시작</button>
+            `;
+            document.getElementById('retryBtn').addEventListener('click', startGame);
+            return;
+          } else {
+            invincibleTimer = 90;
+          }
+          break;
+        }
       }
     }
 
@@ -1170,13 +1370,20 @@ function draw() {
     // Bone
     drawBone(bone.x, bone.y);
 
+    // Ground obstacles (behind characters)
+    groundObstacles.forEach(o => drawGroundObstacle(o));
+
     if (gameState === 'playing') {
       // Beam (behind characters)
       drawBeam();
-      // Cat
-      drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
-      // Dog
-      drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+      // Draw follower first (behind), then leader (front)
+      if (swapped) {
+        drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+        drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
+      } else {
+        drawCat(cat.x, cat.y, cat.animFrame, cat.isBlinking);
+        drawDog(dog.x, dog.y, dog.animFrame, dog.isBlinking);
+      }
     }
 
     drawForeground();
@@ -1253,7 +1460,7 @@ function startGame() {
   gameState = 'playing';
   overlay.classList.add('hidden');
   ensureAudio();
-  stopGunBGM();
+  stopGunBGM(); stopCatBGM();
   startBGM();
 }
 
@@ -1264,14 +1471,26 @@ document.addEventListener('keydown', e => {
     if (gameState === 'menu') startGame();
     else isSpaceHeld = true;
   }
-  // ESC: swap dog and cat positions
+  // ESC: swap who is player character (dog ↔ cat)
   if (e.code === 'Escape' && gameState === 'playing') {
     swapped = !swapped;
-    const tmpX = dog.x, tmpY = dog.y;
-    dog.x = cat.x; dog.y = cat.y;
-    cat.x = tmpX; cat.y = tmpY;
-    addParticles(dog.x, dog.y, '#ffe066', 6);
-    addParticles(cat.x, cat.y, '#ff6666', 6);
+    // Transfer physics state: the new leader takes current leader position
+    if (swapped) {
+      // Cat becomes leader: move cat to dog position, dog becomes follower
+      cat.x = dog.x; cat.y = dog.y;
+      cat.vy = dog.vy;
+    } else {
+      // Dog becomes leader: move dog to cat position, cat becomes follower
+      dog.x = cat.x; dog.y = cat.y;
+      dog.vy = cat.vy || 0;
+    }
+    addParticles(dog.x, dog.y, '#ffe066', 8);
+    addParticles(cat.x, cat.y, '#ff6666', 8);
+    // Switch BGM
+    if (gunActive) { /* keep gun BGM */ }
+    else if (swapped) { stopBGM(); startCatBGM(); }
+    else { stopCatBGM(); startBGM(); }
+    playSound('bone'); // swap sound
   }
 });
 document.addEventListener('keyup', e => {
@@ -1291,6 +1510,33 @@ canvas.addEventListener('touchstart', e => {
 }, { passive: false });
 canvas.addEventListener('touchend', () => { isSpaceHeld = false; });
 startBtn.addEventListener('click', startGame);
+
+// Help button
+document.getElementById('helpBtn').addEventListener('click', () => {
+  document.getElementById('helpModal').classList.toggle('show');
+});
+
+// Mobile responsive scaling
+function resizeCanvas() {
+  const container = document.getElementById('gameContainer');
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const gameRatio = W / H; // 800/500 = 1.6
+  const screenRatio = vw / vh;
+  if (screenRatio < gameRatio) {
+    // Width limited (mobile portrait)
+    container.style.width = vw + 'px';
+    container.style.height = (vw / gameRatio) + 'px';
+  } else {
+    // Height limited
+    container.style.height = vh + 'px';
+    container.style.width = (vh * gameRatio) + 'px';
+  }
+  canvas.style.width = container.style.width;
+  canvas.style.height = container.style.height;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
 // Init
 initClouds();
