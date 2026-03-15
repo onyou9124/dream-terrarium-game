@@ -558,8 +558,7 @@ function spawnScoreStars() {
 function updateLivesUI() {
   if (lives < 0) lives = 0;
   livesContainer.innerHTML = '';
-  const showCount = Math.min(lives, 3);
-  for (let i = 0; i < showCount; i++) {
+  for (let i = 0; i < lives; i++) {
     const c = document.createElement('canvas');
     c.width = 40; c.height = 40;
     c.style.imageRendering = 'pixelated';
@@ -579,12 +578,6 @@ function updateLivesUI() {
     s.fillStyle = '#fff5aa';
     s.fillRect(17, 11, 6, 3);
     livesContainer.appendChild(c);
-  }
-  if (lives > 3) {
-    const extra = document.createElement('span');
-    extra.textContent = `+${lives - 3}`;
-    extra.style.cssText = 'color:#ffe066;font-size:16px;font-weight:bold;font-family:Courier New,monospace;text-shadow:1px 1px 0 #000;margin-left:2px;';
-    livesContainer.appendChild(extra);
   }
 }
 
