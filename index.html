@@ -447,6 +447,15 @@ let pendingSpeechBubble = false;
 // Hit counter for grade system
 let hitCount = 0;
 
+// Stats tracking
+let meatEaten = 0;
+let smallStarsCollected = 0;
+let bigStarsCollected = 0;
+let stageStartTime = 0;
+let stageTimes = [0, 0, 0, 0];
+let gameStartTime = 0;
+let totalClearTime = 0;
+
 // Cached room books (prevent flickering)
 let roomBooks = null;
 const dogLines = ['테라시마쨩 가자!', '고기먹자고기!', '마자!!', '뼈다귀커몬!!', '멍멍!', '쉽네!', '냐옹~'];
@@ -589,6 +598,8 @@ function reset() {
   gamePaused = false; countdownTimer = 0; pausedBgmState = null; currentStage = 0;
   stageTransitionTimer = 0; endingFrame = -1; endingNarrated = false; endingScrollY = 0; endingAsCat = false;
   speechBubbleText = ''; speechBubbleTimer = 0; dogUsedLines = []; catUsedLines = []; pendingSpeechBubble = false; roomBooks = null;
+  meatEaten = 0; smallStarsCollected = 0; bigStarsCollected = 0;
+  stageTimes = [0, 0, 0, 0]; stageStartTime = performance.now(); gameStartTime = performance.now(); totalClearTime = 0;
   if (endingBgmInterval) { clearInterval(endingBgmInterval); endingBgmInterval = null; }
   scoreText.textContent = 'SCORE: 0';
   updateLivesUI();
@@ -613,7 +624,9 @@ function drawDog(x, y, frame, blinking) {
   const bounce = Math.sin(frame * 0.3) * 2;
   const by = oy + bounce;
 
-  if (invincibleTimer > 0 && fatScale <= 1.05 && Math.floor(invincibleTimer / 4) % 2 === 0) {
+  if (fatTimer > 0 && fatTimer < 60 && Math.floor(fatTimer / 4) % 2 === 0) {
+    ctx.globalAlpha = 0.4;
+  } else if (invincibleTimer > 0 && fatScale <= 1.05 && Math.floor(invincibleTimer / 4) % 2 === 0) {
     ctx.globalAlpha = 0.4;
   }
 
@@ -700,6 +713,12 @@ function drawCat(x, y, frame, blinking) {
   const oy = Math.floor(y - 25);
   const bounce = Math.sin(frame * 0.3 + 1) * 2;
   const by = oy + bounce;
+
+  if (fatTimer > 0 && fatTimer < 60 && Math.floor(fatTimer / 4) % 2 === 0) {
+    ctx.globalAlpha = 0.4;
+  } else if (invincibleTimer > 0 && fatScale <= 1.05 && Math.floor(invincibleTimer / 4) % 2 === 0) {
+    ctx.globalAlpha = 0.4;
+  }
 
   const tailWave = Math.sin(frameCount * 0.15) * 4;
   drawPixelRect(ox - 5, by + 15 + tailWave, px, px, '#cc3333');
@@ -1617,6 +1636,9 @@ function update() {
 
     // Stage changed
     if (currentStage !== prevStage) {
+      const now = performance.now();
+      stageTimes[prevStage] = (now - stageStartTime) / 1000;
+      stageStartTime = now;
       stageTransitionTimer = 150; // ~2.5 sec transition screen
       // Restart BGM for new stage (keep current character)
       if (!gunActive) {
@@ -1806,6 +1828,7 @@ function update() {
       if (collides(leader.x - 20, leader.y - 20, 40, 40, screenX - 10, s.y + bob - 10, 20, 20)) {
         s.collected = true;
         score += 5;
+        smallStarsCollected++;
         scoreText.textContent = `SCORE: ${score}`;
         addParticles(screenX, s.y, '#ffe066', 8);
         playSound('star');
@@ -1865,6 +1888,7 @@ function update() {
         fatTimer = 180; // 3 seconds fat before shrinking
         invincibleTimer = 180; // 3 seconds invincibility
         score += 100;
+        meatEaten++;
         scoreText.textContent = `SCORE: ${score}`;
         addParticles(m.x, m.y, '#ff8844', 12);
         addParticles(m.x, m.y, '#ffcc88', 6);
@@ -1883,6 +1907,7 @@ function update() {
       const bob = Math.sin(frameCount * 0.04 + ls.x) * 5;
       if (collides(leader.x - 22, leader.y - 22, 44, 44, ls.x - 20, ls.y + bob - 20, 40, 40)) {
         lives++;
+        bigStarsCollected++;
         updateLivesUI();
         addParticles(ls.x, ls.y, '#ffe066', 15);
         addParticles(ls.x, ls.y, '#fff', 8);
@@ -2291,6 +2316,9 @@ const endingCatLines = {
 
 // ============ ENDING SEQUENCE ============
 function startEnding() {
+  const now = performance.now();
+  stageTimes[currentStage] = (now - stageStartTime) / 1000;
+  totalClearTime = (now - gameStartTime) / 1000;
   gameState = 'ending';
   endingFrame = 0;
   endingNarrated = false;
@@ -2547,9 +2575,22 @@ function drawEnding() {
     ctx.font = '14px Courier New';
     ctx.fillStyle = '#ccc';
     ctx.fillText(`피격 횟수: ${hitCount}`, W / 2, H / 2 + 70);
-    ctx.font = '16px Courier New';
-    ctx.fillStyle = '#fff';
-    ctx.fillText('You cleared all stages!', W / 2, H / 2 + 100);
+
+    // Stats panel
+    const fmt = s => { const m = Math.floor(s / 60); const sec = Math.floor(s % 60); return `${m}:${String(sec).padStart(2, '0')}`; };
+    const stNames = ['SKY', 'HELL', 'SEA', 'HEAVEN'];
+    ctx.font = '11px Courier New';
+    ctx.fillStyle = '#aad';
+    let sy = H / 2 + 92;
+    for (let i = 0; i < 4; i++) {
+      ctx.fillText(`${stNames[i]}: ${fmt(stageTimes[i])}`, W / 2, sy);
+      sy += 15;
+    }
+    ctx.fillStyle = '#ffe066';
+    ctx.fillText(`총 클리어: ${fmt(totalClearTime)}`, W / 2, sy);
+    sy += 18;
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`🍖 ${meatEaten}  ⭐ ${smallStarsCollected}  🌟 ${bigStarsCollected}`, W / 2, sy);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = 1;
