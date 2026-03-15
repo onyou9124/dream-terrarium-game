@@ -93,12 +93,12 @@ function playNarration(){
   if(narrationPlayed)return;narrationPlayed=true;
   if(!window.speechSynthesis)return;
   const u=new SpeechSynthesisUtterance('The phone dogs are incredibly strong. They defeated the angry red phone dogs and saved the world. Now, there is nothing left to fear, nothing left to worry about. Congratulations.');
-  u.lang='en-US';u.rate=0.75;u.pitch=0.15;u.volume=1;
-  // Find deepest male English voice available
+  u.lang='en-US';u.rate=0.65;u.pitch=0.1;u.volume=1;
+  // Find deep, calm male English voice - works on both PC and mobile
   const voices=speechSynthesis.getVoices();
-  const maleNames=['David','Mark','James','Daniel','George','Richard','Alex','Google US English'];
+  const deepMaleNames=['Google UK English Male','Daniel','David','Mark','James','George','Richard','Alex','Google US English'];
   let chosen=null;
-  for(const mn of maleNames){chosen=voices.find(v=>v.lang.startsWith('en')&&v.name.includes(mn));if(chosen)break;}
+  for(const mn of deepMaleNames){chosen=voices.find(v=>v.lang.startsWith('en')&&v.name.includes(mn));if(chosen)break;}
   if(!chosen)chosen=voices.find(v=>v.lang.startsWith('en')&&v.name.toLowerCase().includes('male'));
   if(!chosen)chosen=voices.find(v=>v.lang==='en-US');
   if(!chosen)chosen=voices.find(v=>v.lang.startsWith('en'));
@@ -512,7 +512,7 @@ function drawBG_flowers(){
   }
   // Rolling green hills (layered)
   for(let layer=0;layer<3;layer++){
-    const hc=['#a8e88a','#98d87a','#8acc6e'][layer];
+    const hc=['#d4f5c0','#c4edb0','#b4e4a0'][layer];
     const off=layer*40;
     for(let hx=-30;hx<BASE_W+30;hx+=2){
       const hh=25+Math.sin(hx*0.008+layer*1.5)*20+Math.sin(hx*0.02+layer)*10;
@@ -561,13 +561,14 @@ function drawBG_flowers(){
 }
 
 function drawBG_underwater(){
-  // Aquamarine water gradient - darker toward bottom
+  // Aquamarine water gradient - smooth bright top to dark bottom
   for(let y=0;y<BASE_H;y+=2){
     const t=y/BASE_H;
-    const shimmer=Math.sin(y*0.03+realTime*2)*5+Math.sin(y*0.07+realTime*1.3)*3;
-    const r=Math.floor(30+t*(-20)+shimmer);
-    const g2=Math.floor(220-t*100+shimmer*0.5);
-    const b=Math.floor(240-t*70+shimmer*0.3);
+    const t2=t*t*t; // cubic falloff - gradually darker
+    const shimmer=Math.sin(y*0.03+realTime*2)*3+Math.sin(y*0.07+realTime*1.3)*2;
+    const r=Math.floor(8+(1-t2)*55+shimmer);
+    const g2=Math.floor(25+(1-t2)*185+shimmer*0.4);
+    const b=Math.floor(40+(1-t2)*185+shimmer*0.3);
     ctx.fillStyle=`rgb(${Math.max(0,Math.min(255,r))},${Math.max(0,Math.min(255,g2))},${Math.max(0,Math.min(255,b))})`;
     ctx.fillRect(0,y,BASE_W,2);
   }
@@ -599,23 +600,34 @@ function drawBG_underwater(){
   }
   // Bubbles
   for(let i=0;i<30;i++){const bx=(i*47+realTime*15+i*i*5)%BASE_W,by=(520-((realTime*20+i*50)%650)),bsz=2+i%4;ctx.globalAlpha=0.3;pxCircle(bx,by,bsz,'#bbffee');px(bx-1,by-bsz+1,2,1,'#fff');ctx.globalAlpha=1}
-  // Sandy/rocky ground
-  px(0,GROUND_Y,BASE_W,100,'#c8b080');px(0,GROUND_Y,BASE_W,3,'#d8c898');px(0,GROUND_Y+3,BASE_W,2,'#d0c088');
+  // Seabed ground with soft water-sand blend
+  // Blend zone: water color fades into sand over 15px
+  for(let dy=0;dy<15;dy++){
+    const blend=dy/15;
+    const r=Math.floor(45*(1-blend)+blend*90);
+    const g=Math.floor(65*(1-blend)+blend*78);
+    const b2=Math.floor(75*(1-blend)+blend*58);
+    ctx.globalAlpha=0.5+blend*0.5;
+    px(0,GROUND_Y+dy,BASE_W,2,`rgb(${r},${g},${b2})`);
+  }
+  ctx.globalAlpha=1;
+  px(0,GROUND_Y+15,BASE_W,85,'#6a5a45');
+  px(0,GROUND_Y,BASE_W,2,'#4a5848');px(0,GROUND_Y+2,BASE_W,2,'#556048');
   // Sand texture
-  for(let i=0;i<40;i++){const sx=(i*29+13)%920,sy=GROUND_Y+6+i%8*5;ctx.globalAlpha=0.15;px(sx,sy,3+i%4,2,'#b09060');ctx.globalAlpha=1}
+  for(let i=0;i<40;i++){const sx=(i*29+13)%920,sy=GROUND_Y+10+i%8*5;ctx.globalAlpha=0.12;px(sx,sy,3+i%4,2,'#554838');ctx.globalAlpha=1}
   // Rocks on sea floor (various sizes)
   const rockData=[[80,8,18,12],[200,12,14,10],[350,6,22,14],[520,10,16,11],[680,8,20,13],[820,14,12,9],[150,16,10,7],[440,18,8,6],[750,4,24,15],[900,10,15,10]];
   for(const [rx,ry2,rw,rh] of rockData){
     const ry=GROUND_Y+ry2;
-    const rc1='#889098',rc2='#99a0a8',rc3='#778088';
+    const rc1='#708078',rc2='#809088',rc3='#607068';
     pxCircle(rx+rw/2,ry,rw/2,rc1);
     px(rx+2,ry-rh*0.3,rw-4,rh*0.5,rc2);
     pxCircle(rx+rw/2,ry-rh*0.2,rw/2-2,rc2);
     // Rock highlight
-    ctx.globalAlpha=0.3;px(rx+3,ry-rh*0.4,rw*0.4,2,'#bbc0c8');ctx.globalAlpha=1;
+    ctx.globalAlpha=0.25;px(rx+3,ry-rh*0.4,rw*0.4,2,'#90a098');ctx.globalAlpha=1;
   }
   // Starfish on sea floor
-  const starPos=[[130,GROUND_Y+10,'#ff7755'],[390,GROUND_Y+14,'#ffaa55'],[620,GROUND_Y+8,'#ff8877'],[850,GROUND_Y+12,'#ffbb66']];
+  const starPos=[[130,GROUND_Y+10,'#cc6044'],[390,GROUND_Y+14,'#cc8844'],[620,GROUND_Y+8,'#cc7066'],[850,GROUND_Y+12,'#cc9955']];
   for(const [sx,sy,sc] of starPos){
     // 5-pointed starfish
     for(let a=0;a<5;a++){
@@ -630,7 +642,7 @@ function drawBG_underwater(){
   }
   // Kelp/seaweed clumps (short, bushy, not tall stalks)
   for(let i=0;i<10;i++){
-    const kx=50+i*95;const kc1='#2a8848',kc2='#3aaa58',kc3='#55bb70';
+    const kx=50+i*95;const kc1='#1e5e35',kc2='#2a7845',kc3='#358a52';
     // Short bushy kelp leaves
     for(let l=0;l<4;l++){
       const lAngle=(l-1.5)*0.4+Math.sin(realTime*1.2+i+l)*0.15;
@@ -647,7 +659,7 @@ function drawBG_underwater(){
   // Small colorful coral clusters
   for(let i=0;i<8;i++){
     const cx2=40+i*125,cy2=GROUND_Y-3;
-    const cc=['#ff6688','#ffaa55','#ff88cc','#cc88ff','#ff7744','#88ddaa','#ffcc55','#ff99aa'][i];
+    const cc=['#cc5570','#cc8844','#cc70aa','#aa70cc','#cc6038','#70bb88','#ccaa44','#cc7888'][i];
     for(let b2=0;b2<3;b2++){const bx=cx2+b2*5-5,bh=6+b2*2+Math.sin(i+b2)*3;pxCircle(bx,cy2-bh,3,cc);px(bx-1,cy2-bh,2,bh,cc)}
   }
   // Fish
@@ -667,17 +679,17 @@ function drawBG_dream(){
   for(let y=0;y<GROUND_Y;y+=2){
     const t=y/GROUND_Y;
     const h=(hueOff+t*120+y*0.15)%360;
-    ctx.fillStyle=`hsl(${h},80%,${80-t*10}%)`;
+    ctx.fillStyle=`hsl(${h},65%,${92-t*5}%)`;
     ctx.fillRect(0,y,BASE_W,2);
   }
   // Shimmering rainbow light columns
   for(let i=0;i<8;i++){
     const colX=60+i*120+Math.sin(realTime*0.4+i*1.1)*30;
-    ctx.globalAlpha=0.15+Math.sin(realTime*0.6+i)*0.05;
+    ctx.globalAlpha=0.10+Math.sin(realTime*0.6+i)*0.03;
     for(let cy=0;cy<GROUND_Y;cy+=3){
       const h2=(hueOff+cy*0.5+i*45)%360;
       const w=22+Math.sin(cy*0.015+realTime+i)*10;
-      ctx.fillStyle=`hsl(${h2},85%,75%)`;
+      ctx.fillStyle=`hsl(${h2},70%,90%)`;
       ctx.fillRect(colX-w/2,cy,w,3);
     }
     ctx.globalAlpha=1;
@@ -694,8 +706,8 @@ function drawBG_dream(){
   // Crescent moon (iridescent)
   const mx=750,my=80;
   const moonH=(hueOff*0.5)%360;
-  pxCircle(mx,my,35,`hsl(${moonH},40%,92%)`);pxCircle(mx,my,32,`hsl(${moonH+30},35%,95%)`);
-  pxCircle(mx+12,my-8,28,`hsl(${(moonH+180)%360},50%,82%)`);
+  pxCircle(mx,my,35,`hsl(${moonH},25%,97%)`);pxCircle(mx,my,32,`hsl(${moonH+30},20%,98%)`);
+  pxCircle(mx+12,my-8,28,`hsl(${(moonH+180)%360},30%,92%)`);
   // Wide dreamy clouds (rainbow-tinted, irregular positions)
   const cloudPos3=[[60,30],[310,75],[200,50],[530,40],[700,65],[850,35]];
   for(let i=0;i<6;i++){
@@ -703,13 +715,13 @@ function drawBG_dream(){
     const cy=cloudPos3[i][1]+Math.sin(realTime*0.4+i*1.5)*8;
     const sz=25+[4,7,3,6,2,5][i]*2;
     const ch=(hueOff+i*60)%360;
-    const cc=`hsl(${ch},65%,85%)`;
+    const cc=`hsl(${ch},50%,93%)`;
     ctx.save();ctx.translate(cx,cy);ctx.scale(2.2,1);
-    ctx.globalAlpha=0.1;
-    pxCircle(0,sz*0.2,sz*0.85,`hsl(${ch},50%,60%)`);
+    ctx.globalAlpha=0.08;
+    pxCircle(0,sz*0.2,sz*0.85,`hsl(${ch},40%,75%)`);
     ctx.globalAlpha=0.7;
     pxCircle(0,0,sz,cc);
-    pxCircle(sz*0.4,-sz*0.08,sz*0.55,`hsl(${(ch+40)%360},70%,88%)`);
+    pxCircle(sz*0.4,-sz*0.08,sz*0.55,`hsl(${(ch+40)%360},55%,95%)`);
     pxCircle(-sz*0.3,sz*0.05,sz*0.5,cc);
     ctx.globalAlpha=0.5;
     pxCircle(-sz*0.05,-sz*0.1,sz*0.55,'#fff');
@@ -724,24 +736,24 @@ function drawBG_dream(){
     ctx.globalAlpha=0.5+Math.sin(realTime*2+i)*0.2;
     const sz=1+Math.sin(realTime*3+i*1.1);
     const sh=(hueOff+i*25+realTime*20)%360;
-    pxCircle(dx,dy,sz,`hsl(${sh},90%,75%)`);
+    pxCircle(dx,dy,sz,`hsl(${sh},75%,88%)`);
     ctx.globalAlpha=1;
   }
   // Soft rainbow cloud ground
   for(let x=0;x<BASE_W;x+=4){
     const gh=(hueOff+x*0.3)%360;
-    ctx.fillStyle=`hsl(${gh},70%,82%)`;ctx.fillRect(x,GROUND_Y,4,100);
+    ctx.fillStyle=`hsl(${gh},50%,92%)`;ctx.fillRect(x,GROUND_Y,4,100);
   }
-  px(0,GROUND_Y,BASE_W,4,'#ffe8ff');px(0,GROUND_Y+4,BASE_W,3,'#f8e0f8');
+  px(0,GROUND_Y,BASE_W,4,'#fff5ff');px(0,GROUND_Y+4,BASE_W,3,'#fef0fe');
   // Cloud bumps on ground (rainbow)
-  for(let i=0;i<20;i++){const cx=i*50+10;const bh=(hueOff+i*18)%360;pxCircle(cx,GROUND_Y-5+Math.sin(i*0.8)*3,12+i%5*3,`hsl(${bh},65%,85%)`);pxCircle(cx,GROUND_Y-8,8+i%4*2,'#fff')}
+  for(let i=0;i<20;i++){const cx=i*50+10;const bh=(hueOff+i*18)%360;pxCircle(cx,GROUND_Y-5+Math.sin(i*0.8)*3,12+i%5*3,`hsl(${bh},45%,93%)`);pxCircle(cx,GROUND_Y-8,8+i%4*2,'#fff')}
   // Floating hearts (rainbow colored)
   for(let i=0;i<10;i++){
     const hx=(i*100+20)+Math.sin(realTime*0.5+i*1.2)*20;
     const hy=100+i*30+Math.sin(realTime*0.7+i)*15;
     ctx.globalAlpha=0.25+Math.sin(realTime+i)*0.1;
     const hh=(hueOff+i*36)%360;
-    drawPixelHeart(hx,hy,1.5+i%2,`hsl(${hh},85%,65%)`);
+    drawPixelHeart(hx,hy,1.5+i%2,`hsl(${hh},70%,82%)`);
     ctx.globalAlpha=1;
   }
   // Big rainbow arcs (multiple, brighter)
@@ -873,7 +885,7 @@ const levels=[
      {x:628,y:GROUND_Y-50,w:32,h:10,type:'wood',hp:25,maxHp:25}
    ]},
   // Level 3: Dream - 3 enemies, 6 dogs - triple tower (1 inside, 2 on towers)
-  {dogs:[{type:'normal'},{type:'normal'},{type:'normal'},{type:'big'}],
+  {dogs:[{type:'normal'},{type:'normal'},{type:'big'},{type:'big'}],
    enemies:[{x:540,y:0,size:28,hp:35,maxHp:35,inside:true},{x:650,y:0,size:28,hp:35,maxHp:35},{x:750,y:0,size:30,hp:40,maxHp:40},{x:590,y:0,size:26,hp:30,maxHp:30}],
    blocks:[
      // Left tower (tallest, 3 floors) - enemy A inside ground floor
@@ -908,7 +920,7 @@ const levels=[
      {x:765,y:GROUND_Y-24,w:16,h:24,type:'wood',hp:22,maxHp:22}
    ]},
   // Level 4: Candy - 4 enemies, 8 dogs - tower fortress (2 inside, 2 on top)
-  {dogs:[{type:'normal'},{type:'big'},{type:'bomb'},{type:'normal'},{type:'normal'},{type:'normal'}],
+  {dogs:[{type:'normal'},{type:'big'},{type:'bomb'},{type:'big'},{type:'normal'},{type:'normal'}],
    enemies:[{x:530,y:0,size:28,hp:40,maxHp:40,inside:true},{x:700,y:0,size:28,hp:40,maxHp:40,inside:true},{x:620,y:0,size:30,hp:45,maxHp:45},{x:770,y:0,size:28,hp:40,maxHp:40},{x:580,y:0,size:28,hp:38,maxHp:38},{x:660,y:0,size:26,hp:35,maxHp:35}],
    blocks:[
      // Left tower (3 floors) - enemy A inside ground
@@ -944,58 +956,58 @@ const levels=[
      {x:465,y:GROUND_Y-35,w:16,h:35,type:'wood',hp:35,maxHp:35}
    ]},
   // Level 5: Hell - 5 enemies, 9 dogs - mega tower castle (2 inside, 3 on towers)
-  {dogs:[{type:'normal'},{type:'big'},{type:'bomb'},{type:'big'},{type:'bomb'},{type:'normal'},{type:'normal'}],
-   enemies:[{x:510,y:0,size:30,hp:45,maxHp:45,inside:true},{x:700,y:0,size:30,hp:45,maxHp:45,inside:true},{x:610,y:0,size:30,hp:50,maxHp:50},{x:560,y:0,size:32,hp:55,maxHp:55},{x:770,y:0,size:30,hp:50,maxHp:50},{x:650,y:0,size:28,hp:42,maxHp:42},{x:480,y:0,size:28,hp:40,maxHp:40}],
+  {dogs:[{type:'normal'},{type:'big'},{type:'bomb'},{type:'big'},{type:'bomb'},{type:'normal'}],
+   enemies:[{x:470,y:0,size:30,hp:45,maxHp:45,inside:true},{x:660,y:0,size:30,hp:45,maxHp:45,inside:true},{x:570,y:0,size:30,hp:50,maxHp:50},{x:520,y:0,size:32,hp:55,maxHp:55},{x:730,y:0,size:30,hp:50,maxHp:50},{x:610,y:0,size:28,hp:42,maxHp:42},{x:440,y:0,size:28,hp:40,maxHp:40}],
    blocks:[
      // Left tower (4 floors, tallest) - enemy A inside ground
-     {x:470,y:GROUND_Y-85,w:18,h:85,type:'stone',hp:80,maxHp:80},
-     {x:550,y:GROUND_Y-85,w:18,h:85,type:'stone',hp:80,maxHp:80},
-     {x:466,y:GROUND_Y-85,w:106,h:12,type:'stone',hp:65,maxHp:65},
-     {x:492,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:40,maxHp:40},
-     {x:530,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:40,maxHp:40},
+     {x:430,y:GROUND_Y-85,w:18,h:85,type:'stone',hp:80,maxHp:80},
+     {x:510,y:GROUND_Y-85,w:18,h:85,type:'stone',hp:80,maxHp:80},
+     {x:426,y:GROUND_Y-85,w:106,h:12,type:'stone',hp:65,maxHp:65},
+     {x:452,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:40,maxHp:40},
+     {x:490,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:40,maxHp:40},
      // Left tower 2nd floor
-     {x:483,y:GROUND_Y-120,w:18,h:33,type:'stone',hp:70,maxHp:70},
-     {x:537,y:GROUND_Y-120,w:18,h:33,type:'stone',hp:70,maxHp:70},
-     {x:479,y:GROUND_Y-120,w:80,h:12,type:'stone',hp:60,maxHp:60},
+     {x:443,y:GROUND_Y-120,w:18,h:33,type:'stone',hp:70,maxHp:70},
+     {x:497,y:GROUND_Y-120,w:18,h:33,type:'stone',hp:70,maxHp:70},
+     {x:439,y:GROUND_Y-120,w:80,h:12,type:'stone',hp:60,maxHp:60},
      // Left tower 3rd floor (enemy D on 3rd roof)
-     {x:495,y:GROUND_Y-148,w:18,h:26,type:'stone',hp:60,maxHp:60},
-     {x:530,y:GROUND_Y-148,w:18,h:26,type:'stone',hp:60,maxHp:60},
-     {x:491,y:GROUND_Y-148,w:61,h:10,type:'stone',hp:50,maxHp:50},
+     {x:455,y:GROUND_Y-148,w:18,h:26,type:'stone',hp:60,maxHp:60},
+     {x:490,y:GROUND_Y-148,w:18,h:26,type:'stone',hp:60,maxHp:60},
+     {x:451,y:GROUND_Y-148,w:61,h:10,type:'stone',hp:50,maxHp:50},
      // Left tower 4th cap
-     {x:505,y:GROUND_Y-170,w:18,h:20,type:'ice',hp:40,maxHp:40},
-     {x:525,y:GROUND_Y-170,w:18,h:20,type:'ice',hp:40,maxHp:40},
-     {x:501,y:GROUND_Y-170,w:46,h:8,type:'ice',hp:35,maxHp:35},
+     {x:465,y:GROUND_Y-170,w:18,h:20,type:'ice',hp:40,maxHp:40},
+     {x:485,y:GROUND_Y-170,w:18,h:20,type:'ice',hp:40,maxHp:40},
+     {x:461,y:GROUND_Y-170,w:46,h:8,type:'ice',hp:35,maxHp:35},
      // Center tower (3 floors) - enemy C on 2nd floor roof
-     {x:580,y:GROUND_Y-75,w:18,h:75,type:'stone',hp:70,maxHp:70},
-     {x:650,y:GROUND_Y-75,w:18,h:75,type:'stone',hp:70,maxHp:70},
-     {x:576,y:GROUND_Y-75,w:96,h:12,type:'stone',hp:55,maxHp:55},
-     {x:602,y:GROUND_Y-28,w:18,h:28,type:'wood',hp:35,maxHp:35},
-     {x:632,y:GROUND_Y-28,w:18,h:28,type:'wood',hp:35,maxHp:35},
+     {x:540,y:GROUND_Y-75,w:18,h:75,type:'stone',hp:70,maxHp:70},
+     {x:610,y:GROUND_Y-75,w:18,h:75,type:'stone',hp:70,maxHp:70},
+     {x:536,y:GROUND_Y-75,w:96,h:12,type:'stone',hp:55,maxHp:55},
+     {x:562,y:GROUND_Y-28,w:18,h:28,type:'wood',hp:35,maxHp:35},
+     {x:592,y:GROUND_Y-28,w:18,h:28,type:'wood',hp:35,maxHp:35},
      // Center tower 2nd floor
-     {x:593,y:GROUND_Y-108,w:18,h:31,type:'stone',hp:60,maxHp:60},
-     {x:638,y:GROUND_Y-108,w:18,h:31,type:'stone',hp:60,maxHp:60},
-     {x:589,y:GROUND_Y-108,w:71,h:10,type:'stone',hp:50,maxHp:50},
+     {x:553,y:GROUND_Y-108,w:18,h:31,type:'stone',hp:60,maxHp:60},
+     {x:598,y:GROUND_Y-108,w:18,h:31,type:'stone',hp:60,maxHp:60},
+     {x:549,y:GROUND_Y-108,w:71,h:10,type:'stone',hp:50,maxHp:50},
      // Center tower 3rd cap
-     {x:608,y:GROUND_Y-132,w:18,h:22,type:'ice',hp:42,maxHp:42},
-     {x:630,y:GROUND_Y-132,w:18,h:22,type:'ice',hp:42,maxHp:42},
-     {x:604,y:GROUND_Y-132,w:48,h:8,type:'ice',hp:35,maxHp:35},
+     {x:568,y:GROUND_Y-132,w:18,h:22,type:'ice',hp:42,maxHp:42},
+     {x:590,y:GROUND_Y-132,w:18,h:22,type:'ice',hp:42,maxHp:42},
+     {x:564,y:GROUND_Y-132,w:48,h:8,type:'ice',hp:35,maxHp:35},
      // Right tower (3 floors) - enemy B inside ground, enemy E on 2nd roof
-     {x:675,y:GROUND_Y-80,w:18,h:80,type:'stone',hp:75,maxHp:75},
-     {x:745,y:GROUND_Y-80,w:18,h:80,type:'stone',hp:75,maxHp:75},
-     {x:671,y:GROUND_Y-80,w:96,h:12,type:'stone',hp:60,maxHp:60},
-     {x:697,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:38,maxHp:38},
-     {x:727,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:38,maxHp:38},
+     {x:635,y:GROUND_Y-80,w:18,h:80,type:'stone',hp:75,maxHp:75},
+     {x:705,y:GROUND_Y-80,w:18,h:80,type:'stone',hp:75,maxHp:75},
+     {x:631,y:GROUND_Y-80,w:96,h:12,type:'stone',hp:60,maxHp:60},
+     {x:657,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:38,maxHp:38},
+     {x:687,y:GROUND_Y-30,w:18,h:30,type:'wood',hp:38,maxHp:38},
      // Right tower 2nd floor
-     {x:690,y:GROUND_Y-112,w:18,h:30,type:'stone',hp:65,maxHp:65},
-     {x:735,y:GROUND_Y-112,w:18,h:30,type:'stone',hp:65,maxHp:65},
-     {x:686,y:GROUND_Y-112,w:71,h:10,type:'stone',hp:55,maxHp:55},
+     {x:650,y:GROUND_Y-112,w:18,h:30,type:'stone',hp:65,maxHp:65},
+     {x:695,y:GROUND_Y-112,w:18,h:30,type:'stone',hp:65,maxHp:65},
+     {x:646,y:GROUND_Y-112,w:71,h:10,type:'stone',hp:55,maxHp:55},
      // Right tower 3rd cap
-     {x:703,y:GROUND_Y-135,w:18,h:21,type:'ice',hp:45,maxHp:45},
-     {x:725,y:GROUND_Y-135,w:18,h:21,type:'ice',hp:45,maxHp:45},
-     {x:699,y:GROUND_Y-135,w:48,h:8,type:'ice',hp:38,maxHp:38},
+     {x:663,y:GROUND_Y-135,w:18,h:21,type:'ice',hp:45,maxHp:45},
+     {x:685,y:GROUND_Y-135,w:18,h:21,type:'ice',hp:45,maxHp:45},
+     {x:659,y:GROUND_Y-135,w:48,h:8,type:'ice',hp:38,maxHp:38},
      // Shield walls
-     {x:445,y:GROUND_Y-35,w:16,h:35,type:'stone',hp:60,maxHp:60},
-     {x:425,y:GROUND_Y-22,w:16,h:22,type:'wood',hp:40,maxHp:40}
+     {x:405,y:GROUND_Y-35,w:16,h:35,type:'stone',hp:60,maxHp:60},
+     {x:385,y:GROUND_Y-22,w:16,h:22,type:'wood',hp:40,maxHp:40}
    ]}
 ];
 
