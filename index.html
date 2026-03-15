@@ -284,6 +284,18 @@ function playSound(type) {
       playNote(880, 0.08, 'square', 0.06, t);
       playNote(1175, 0.1, 'square', 0.05, t + 0.06);
       break;
+    case 'powerdown': // 무적 해제 - 하강 경고음
+      playNote(600, 0.12, 'square', 0.07, t);
+      playNote(450, 0.12, 'square', 0.06, t + 0.1);
+      playNote(300, 0.18, 'square', 0.05, t + 0.2);
+      break;
+    case 'gunend': // 권총 종료 - 기계 정지음
+      playNoise(0.06, 0.15, t);
+      playNote(500, 0.1, 'sawtooth', 0.06, t);
+      playNote(350, 0.12, 'sawtooth', 0.05, t + 0.08);
+      playNote(200, 0.15, 'sawtooth', 0.04, t + 0.18);
+      playNoise(0.04, 0.1, t + 0.25);
+      break;
   }
 }
 
@@ -1664,7 +1676,10 @@ function update() {
     if (invincibleTimer > 0) invincibleTimer--;
 
     // Fat: hold size for fatTimer, then shrink fast
-    if (fatTimer > 0) { fatTimer--; }
+    if (fatTimer > 0) {
+      fatTimer--;
+      if (fatTimer === 0 && fatScale > 1.05) playSound('powerdown');
+    }
     else if (fatScale > 1) {
       fatScale -= 0.015;
       if (fatScale < 1) fatScale = 1;
@@ -1691,6 +1706,7 @@ function update() {
       if (gunTimer <= 0) {
         gunActive = false;
         invincibleTimer = Math.max(invincibleTimer, 30); // 0.5s invincibility after gun
+        playSound('gunend');
         stopGunBGM();
         if (swapped) startCatBGM(); else startBGM();
       }
